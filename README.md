@@ -117,13 +117,40 @@ project and no package manager — `build.sh` calls `swiftc` directly and assemb
 ./build.sh --dmg      # build, then package a disk image
 ```
 
-To produce a notarised build you need a paid Apple Developer membership and a *Developer ID
-Application* certificate:
+`build.sh` picks up a *Developer ID Application* certificate by itself when one is installed, and
+falls back to an ad-hoc signature when it is not — saying so plainly either way.
+
+## Releasing
 
 ```bash
-xcrun notarytool store-credentials pwe --apple-id you@example.com --team-id TEAMID
-SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" NOTARY_PROFILE=pwe ./build.sh --dmg
+Tools/release.sh 1.0.1
 ```
+
+Bumps the version, builds, signs, notarises, staples, asks Gatekeeper for its verdict, tags,
+publishes the GitHub release and updates the Homebrew cask. It refuses to start unless the signing
+identity and the notarisation credentials are both present, rather than discovering that halfway
+through.
+
+Two pieces of one-time setup are needed first, and only the account holder can do them because both
+involve Apple credentials:
+
+1. **A Developer ID Application certificate.** Enrolling in the Developer Program does not create
+   one. In Keychain Access, *Certificate Assistant ▸ Request a Certificate From a Certificate
+   Authority*, saved to disk; upload that CSR at
+   [developer.apple.com/account/resources/certificates/add](https://developer.apple.com/account/resources/certificates/add)
+   choosing **Developer ID Application**; double-click the downloaded `.cer`.
+2. **Notarisation credentials**, stored once in the keychain:
+
+   ```bash
+   xcrun notarytool store-credentials pwe --apple-id you@example.com --team-id TEAMID
+   ```
+
+   It prompts for an app-specific password, which you create at
+   [appleid.apple.com](https://appleid.apple.com) under *Sign-In and Security*.
+
+CI can do the same on a tag push once `MACOS_CERTIFICATE`, `MACOS_CERTIFICATE_PASSWORD`,
+`NOTARY_APPLE_ID`, `NOTARY_TEAM_ID` and `NOTARY_PASSWORD` exist as repository secrets; without them
+it still builds and publishes an ad-hoc signed disk image.
 
 ## Command line
 
