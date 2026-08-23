@@ -23,11 +23,49 @@ jobs:
           if [ -n "$latest" ]; then sudo xcode-select -s "$latest"; fi
           swiftc --version
 
+      # Signing and notarisation run only when the secrets exist, so forks and pull requests still
+      # build. To enable: export the Developer ID Application certificate from Keychain Access as a
+      # .p12, then
+      #   gh secret set MACOS_CERTIFICATE < <(base64 -i cert.p12)
+      #   gh secret set MACOS_CERTIFICATE_PASSWORD
+      #   gh secret set NOTARY_APPLE_ID / NOTARY_TEAM_ID / NOTARY_PASSWORD   (app-specific password)
+      - name: Import signing certificate
+        if: env.MACOS_CERTIFICATE != ''
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN=$RUNNER_TEMP/build.keychain
+          KEYCHAIN_PASSWORD=$(uuidgen)
+          echo "$MACOS_CERTIFICATE" | base64 --decode > $RUNNER_TEMP/cert.p12
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import $RUNNER_TEMP/cert.p12 -k "$KEYCHAIN" -P "$MACOS_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s \
+            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          rm -f $RUNNER_TEMP/cert.p12
+
+      - name: Store notarisation credentials
+        if: env.NOTARY_APPLE_ID != ''
+        env:
+          NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+          NOTARY_TEAM_ID: ${{ secrets.NOTARY_TEAM_ID }}
+          NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
+        run: |
+          xcrun notarytool store-credentials pwe \
+            --apple-id "$NOTARY_APPLE_ID" --team-id "$NOTARY_TEAM_ID" --password "$NOTARY_PASSWORD"
+          echo "NOTARY_PROFILE=pwe" >> $GITHUB_ENV
+
       - name: Build and package
         run: ./build.sh --dmg
 
       - name: Verify the bundle
         run: |
+          echo "--- signature ---"
+          codesign -dv --verbose=2 "build/PWE MAC MONITOR.app" 2>&1 | grep -E "Authority|Signature|TeamIdentifier" || true
           APP="build/PWE MAC MONITOR.app"
           codesign --verify --deep --strict "$APP"
           test -f "$APP/Contents/Resources/Fonts/Inter.ttf"

@@ -5,7 +5,7 @@
 **A menu-bar hardware monitor for Apple Silicon Macs.**
 One self-contained app — no Homebrew, no helper processes, no runtime to install.
 
-[![Download](https://img.shields.io/badge/download-latest%20release-0E1729?style=flat-square)](https://github.com/kenshinice-ai/pwemacbar/releases/latest)
+[![Download](https://img.shields.io/badge/download-latest%20release-0E1729?style=flat-square)](https://github.com/kenshinice-ai/pwemacmonitor/releases/latest)
 [![macOS](https://img.shields.io/badge/macOS-14%2B-A16207?style=flat-square)](#requirements)
 [![Apple Silicon](https://img.shields.io/badge/Apple%20Silicon-M1–M5-A16207?style=flat-square)](#requirements)
 [![License](https://img.shields.io/badge/license-MIT-0E1729?style=flat-square)](LICENSE)
@@ -65,18 +65,18 @@ carry separate verdicts, because it is the hottest one that throttles.
 
 ### Download
 
-1. Grab the `.dmg` from the [latest release](https://github.com/kenshinice-ai/pwemacbar/releases/latest).
+1. Grab the `.dmg` from the [latest release](https://github.com/kenshinice-ai/pwemacmonitor/releases/latest).
 2. Drag **PWE MAC MONITOR** onto **Applications**.
 3. Open it. There is no window — look for the wing in your menu bar.
 
 ### Homebrew
 
-A ready-to-publish cask lives in [`Casks/pwe-mac-monitor.rb`](Casks/pwe-mac-monitor.rb). Once it is
-pushed to a tap, installing is one line:
-
 ```bash
 brew install --cask kenshinice-ai/tap/pwe-mac-monitor
 ```
+
+The cask source lives in [`Casks/pwe-mac-monitor.rb`](Casks/pwe-mac-monitor.rb) and is published to
+[kenshinice-ai/homebrew-tap](https://github.com/kenshinice-ai/homebrew-tap).
 
 ### First launch: "macOS cannot check it for malicious software"
 
@@ -103,8 +103,8 @@ per-core residency and energy-model counters this app reads do not exist on Inte
 ## Build from source
 
 ```bash
-git clone https://github.com/kenshinice-ai/pwemacbar.git
-cd pwemacbar
+git clone https://github.com/kenshinice-ai/pwemacmonitor.git
+cd pwemacmonitor
 ./build.sh --run
 ```
 

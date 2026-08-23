@@ -12,8 +12,8 @@ enum Install {
         return "\(short) (\(build))"
     }
 
-    static let repositoryURL = URL(string: "https://github.com/kenshinice-ai/pwemacbar")!
-    static let releasesURL = URL(string: "https://github.com/kenshinice-ai/pwemacbar/releases/latest")!
+    static let repositoryURL = URL(string: "https://github.com/kenshinice-ai/pwemacmonitor")!
+    static let releasesURL = URL(string: "https://github.com/kenshinice-ai/pwemacmonitor/releases/latest")!
 
     private static let applications = "/Applications"
     private static let promptedKey = "didOfferToMoveToApplications"

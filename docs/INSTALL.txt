@@ -20,4 +20,4 @@ Intel Macs are not supported: the power and per-core data comes from Apple Silic
 that do not exist on Intel hardware.
 
 Source code, issues and newer versions:
-https://github.com/kenshinice-ai/pwemacbar
+https://github.com/kenshinice-ai/pwemacmonitor

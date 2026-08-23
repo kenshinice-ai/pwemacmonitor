@@ -29,8 +29,13 @@ WORK="${TMPDIR:-/tmp}/pwe-mac-monitor-build"
 APP="$WORK/$APP_NAME.app"
 MACOS="$APP/Contents/MacOS"; RES="$APP/Contents/Resources"
 VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" Resources/Info.plist)
-SIGN_IDENTITY="${SIGN_IDENTITY:-}"
+# Use a Developer ID Application certificate automatically when one is installed. Without it the
+# build falls back to an ad-hoc signature, which runs but makes Gatekeeper warn whoever you send it
+# to. Set SIGN_IDENTITY to override the choice, or to "-" to force ad-hoc.
+SIGN_IDENTITY="${SIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null \
+  | sed -n 's/.*"\(Developer ID Application: .*\)"/\1/p' | head -1)}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-}"
+[[ "$SIGN_IDENTITY" == "-" ]] && SIGN_IDENTITY=""
 
 rm -rf "$APP"; mkdir -p "$MACOS" "$RES" build
 
@@ -68,7 +73,8 @@ if [[ -n "$SIGN_IDENTITY" ]]; then
   echo "▸ signing as $SIGN_IDENTITY (hardened runtime)"
   codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$APP"
 else
-  echo "▸ ad-hoc signing (set SIGN_IDENTITY for a distributable signature)"
+  echo "▸ ad-hoc signing — no Developer ID Application certificate found"
+  echo "  Recipients will have to allow the app in System Settings ▸ Privacy & Security."
   codesign --force --sign - "$APP" 2>&1 | grep -v "replacing existing" || true
 fi
 codesign --verify --deep --strict "$APP"
@@ -102,9 +108,14 @@ if [[ "${1:-}" == "--dmg" ]]; then
     echo "▸ notarising (this takes a few minutes)"
     xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait
     xcrun stapler staple "$DMG"
-    echo "✓ notarised and stapled"
+    spctl -a -t open --context context:primary-signature -vv "$DMG" || true
+    echo "✓ notarised and stapled — opens with no warning on any Mac"
+  elif [[ -n "$SIGN_IDENTITY" ]]; then
+    echo "! signed but not notarised. Store credentials once with:"
+    echo "    xcrun notarytool store-credentials pwe --apple-id <id> --team-id <team>"
+    echo "  then rebuild with NOTARY_PROFILE=pwe"
   else
-    echo "! not notarised — recipients will need to allow it in System Settings ▸ Privacy & Security"
+    echo "! not signed for distribution — recipients must allow it in Privacy & Security"
   fi
   shasum -a 256 "$DMG"
   echo "✓ $DMG"
