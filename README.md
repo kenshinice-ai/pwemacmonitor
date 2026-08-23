@@ -69,6 +69,15 @@ carry separate verdicts, because it is the hottest one that throttles.
 2. Drag **PWE MAC MONITOR** onto **Applications**.
 3. Open it. There is no window — look for the wing in your menu bar.
 
+### Homebrew
+
+A ready-to-publish cask lives in [`Casks/pwe-mac-monitor.rb`](Casks/pwe-mac-monitor.rb). Once it is
+pushed to a tap, installing is one line:
+
+```bash
+brew install --cask kenshinice-ai/tap/pwe-mac-monitor
+```
+
 ### First launch: "macOS cannot check it for malicious software"
 
 Releases are ad-hoc signed, not notarised by Apple, so macOS asks before running it once:
