@@ -62,10 +62,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             // loop, and the serial main queue will not re-enter to deliver other blocks while one of
             // its own is still executing — results posted back from worker queues would never land.
             Timer.scheduledTimer(withTimeInterval: wait, repeats: false) { _ in
-                self.monitor.isOpen = true
-                Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { _ in
-                    self.writeSnapshots(to: dir)
-                    NSApp.terminate(nil)
+                MainActor.assumeIsolated {
+                    self.monitor.isOpen = true
+                    Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { _ in
+                        MainActor.assumeIsolated {
+                            self.writeSnapshots(to: dir)
+                            NSApp.terminate(nil)
+                        }
+                    }
                 }
             }
         }

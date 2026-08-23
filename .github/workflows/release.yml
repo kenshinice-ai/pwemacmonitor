@@ -11,12 +11,17 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-14          # Apple Silicon runner — the app is arm64 only
+    # macos-14 ships Swift 5.10, whose compiler crashes on this source. Anything newer is fine.
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
 
-      - name: Show toolchain
-        run: swiftc --version
+      - name: Select the newest Xcode
+        run: |
+          ls /Applications | grep -i '^Xcode' || true
+          latest=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
+          if [ -n "$latest" ]; then sudo xcode-select -s "$latest"; fi
+          swiftc --version
 
       - name: Build and package
         run: ./build.sh --dmg
