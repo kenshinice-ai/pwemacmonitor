@@ -1,0 +1,16 @@
+# Build products
+build/
+*.dmg
+*.zip
+
+# macOS / iCloud
+.DS_Store
+.AppleDouble
+Icon?
+._*
+
+# Editors
+.vscode/
+.idea/
+*.xcuserstate
+xcuserdata/

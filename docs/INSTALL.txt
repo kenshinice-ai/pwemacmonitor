@@ -1,0 +1,23 @@
+PWE MAC MONITOR
+A PARADISE PRODUCTION · 天域文创出品
+
+INSTALLING
+1. Drag "PWE MAC MONITOR" onto the Applications folder in this window.
+2. Open it from Applications. It has no window — look for the wing mark in your menu bar,
+   at the top right of the screen.
+3. Click the wing to open the dashboard. Right-click it for settings.
+
+IF macOS SAYS IT CANNOT CHECK THE APP FOR MALICIOUS SOFTWARE
+This build is not notarised by Apple, so macOS asks before running it the first time.
+   1. Open System Settings ▸ Privacy & Security.
+   2. Scroll to Security. There will be a line about PWE MAC MONITOR being blocked.
+   3. Click "Open Anyway", then confirm.
+You only have to do this once.
+
+REQUIREMENTS
+macOS 14 (Sonoma) or later, on an Apple Silicon Mac (M1 or newer).
+Intel Macs are not supported: the power and per-core data comes from Apple Silicon counters
+that do not exist on Intel hardware.
+
+Source code, issues and newer versions:
+https://github.com/kenshinice-ai/pwemacbar

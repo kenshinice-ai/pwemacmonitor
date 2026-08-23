@@ -1,0 +1,42 @@
+MIT License
+
+Copyright (c) 2026 PWE Group Pty Ltd (Paradise Production / 天域文创)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+TRADEMARKS AND BRAND ASSETS — NOT COVERED BY THE LICENSE ABOVE
+
+The MIT licence above applies to the source code. It does not grant any right
+to use the names, logos, or brand assets of PWE Group Pty Ltd, including:
+
+  * the names "Paradise Production", "天域文创", "PWE", "PWE Studio",
+    "PWE MAC MONITOR" and "PWE MAC Bar";
+  * the Paradise wing mark, in any form — including the vector path data in
+    `Sources/App/BrandMark.swift`, the generated application icon, and the
+    source artwork it is derived from;
+  * the slogan "Create trust through clarity." / "用清晰创造信任。"
+
+You may fork, modify and redistribute this software under the MIT licence, but
+a redistributed build must not carry the Paradise wing mark or use the PWE or
+Paradise Production names in a way that suggests it is the official release.
+Replace `Sources/App/BrandMark.swift` and the application name with your own.
+
+Third-party components carry their own licences — see THIRD-PARTY-NOTICES.md.
