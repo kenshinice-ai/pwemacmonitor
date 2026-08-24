@@ -26,6 +26,20 @@ if [[ -z "$VERSION" ]]; then
   exit 1
 fi
 
+MOUNT=""
+BUMPED=""
+cleanup() {
+  local rc=$?
+  [[ -n "$MOUNT" ]] && hdiutil detach "$MOUNT" -quiet 2>/dev/null
+  # A failure after the version bump used to leave Info.plist modified, and the next run then
+  # stopped at "working tree is dirty" pointing at debris this script itself created.
+  if [[ $rc -ne 0 && -n "$BUMPED" ]]; then
+    git checkout -- Resources/Info.plist 2>/dev/null && echo "! failed — Info.plist restored, tree left clean"
+  fi
+  exit $rc
+}
+trap cleanup EXIT
+
 echo "── preflight ─────────────────────────────────────────────"
 
 IDENTITY=$(security find-identity -v -p codesigning 2>/dev/null \
@@ -83,6 +97,7 @@ echo "── version $VERSION ────────────────�
 BUILD_NUMBER=$(( $(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" Resources/Info.plist) + 1 ))
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" Resources/Info.plist
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" Resources/Info.plist
+BUMPED=1
 echo "✓ Info.plist → $VERSION ($BUILD_NUMBER)"
 
 echo
@@ -96,11 +111,19 @@ echo "$SHA  $(basename "$DMG")" > build/SHA256SUMS.txt
 echo
 echo "── Gatekeeper verdict ────────────────────────────────────"
 # The real test: what a stranger's Mac decides when it opens this.
-spctl -a -t open --context context:primary-signature -vv "$DMG"
-MOUNT=$(hdiutil attach -nobrowse -quiet "$DMG" && echo "/Volumes/PWE MAC MONITOR")
+VERDICT=$(spctl -a -t open --context context:primary-signature -vv "$DMG" 2>&1)
+echo "$VERDICT"
+grep -q "source=Notarized Developer ID" <<<"$VERDICT" || {
+  echo "✗ the disk image is not recognised as notarised — stopping before publishing it"
+  exit 1
+}
+xcrun stapler validate "$DMG" >/dev/null && echo "✓ notarisation ticket stapled to the disk image"
+
+MOUNT=$(hdiutil attach -nobrowse -readonly "$DMG" | awk -F'\t' '/\/Volumes\//{print $NF}' | tail -1)
 spctl -a -vv "$MOUNT/PWE MAC MONITOR.app"
-xcrun stapler validate "$MOUNT/PWE MAC MONITOR.app" || true
+xcrun stapler validate "$MOUNT/PWE MAC MONITOR.app" >/dev/null && echo "✓ ticket stapled to the app"
 hdiutil detach "$MOUNT" -quiet
+MOUNT=""
 
 echo
 echo "── publish ───────────────────────────────────────────────"
