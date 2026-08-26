@@ -50,11 +50,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             Task { @MainActor in self?.refreshIcon() }
         }
         refreshIcon()
-        if !CommandLine.arguments.contains("--snapshot"), !CommandLine.arguments.contains("--popover-test") {
+        if !CommandLine.arguments.contains("--snapshot"), !CommandLine.arguments.contains("--popover-test"),
+           !CommandLine.arguments.contains("--wing-states"), !CommandLine.arguments.contains("--bench-icon") {
             Install.offerToInstallIfNeeded()
         }
         if CommandLine.arguments.contains("--open") { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.openPopover() } }
         if CommandLine.arguments.contains("--popover-test") { runPopoverTest() }
+        if CommandLine.arguments.contains("--bench-icon") { WingStatesCheck.bench(); NSApp.terminate(nil) }
+        if let i = CommandLine.arguments.firstIndex(of: "--wing-states"), i + 1 < CommandLine.arguments.count {
+            WingStatesCheck.write(to: CommandLine.arguments[i + 1])
+            NSApp.terminate(nil)
+        }
         if let i = CommandLine.arguments.firstIndex(of: "--snapshot"), i + 1 < CommandLine.arguments.count {
             let dir = CommandLine.arguments[i + 1]
             let wait = CommandLine.arguments.contains("--warm") ? 95.0 : 8.0
@@ -163,7 +169,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             host.cacheDisplay(in: host.bounds, to: rep)
             try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: "\(dir)/dashboard-\(name).png"))
             for mode in MenuBarMode.allCases {
-                let img = StatusIcon.render(monitor.snap, overall: monitor.overall, powerHealth: monitor.powerHealth, mode: mode, dark: dark)
+                let img = StatusIcon.render(monitor.snap, channels: monitor.channels, overall: monitor.overall, powerHealth: monitor.powerHealth, mode: mode, dark: dark)
                 let scaled = NSImage(size: NSSize(width: img.size.width * 4, height: img.size.height * 4), flipped: false) { r in
                     (dark ? NSColor(white: 0.12, alpha: 1) : NSColor(white: 0.93, alpha: 1)).setFill(); r.fill()
                     img.draw(in: r); return true }
@@ -177,7 +183,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func refreshIcon() {
         guard let b = statusItem.button else { return }
         let dark = b.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
-        b.image = StatusIcon.render(monitor.snap, overall: monitor.overall, powerHealth: monitor.powerHealth, mode: monitor.menuBarMode, dark: dark)
+        b.image = StatusIcon.render(monitor.snap, channels: monitor.channels, overall: monitor.overall, powerHealth: monitor.powerHealth, mode: monitor.menuBarMode, dark: dark)
         let s = monitor.snap
         b.toolTip = String(format: "CPU %.0f%% · GPU %.0f%% · %.1f W · CPU %.0f° · GPU %.0f° · SSD %.0f°", s.cpuUsage * 100, s.gpuUsage * 100, s.sysPower, s.cpuTempMax, s.gpuTemp, s.ssdTemp)
     }

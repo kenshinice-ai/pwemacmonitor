@@ -2,17 +2,21 @@ import AppKit
 
 /// The menu-bar glyph, drawn as a vector NSImage so it stays crisp at any scale factor.
 ///
-/// Brand rule (standard section 7): the wing is never recoloured outside navy / amber / deep amber /
-/// white / black. In the menu bar it therefore renders in the bar's own label colour, and the health
-/// state is carried by a separate element — the rule beneath it — plus the coloured readouts.
+/// The mark itself is the gauge (brand standard §7.1): colour travels out along the feathers as the
+/// machine approaches trouble, so the separate status rule this glyph used to carry is gone — the
+/// wing now says what the rule said, in the space the wing already occupied.
+///
+/// One colour only, not five. A 22 pt bar leaves each feather about 1 pt thick, and a real-size
+/// prototype showed five tints there collapse into a mottled smear that reports "something" without
+/// reporting what. Per-feather detail lives in the panel; see `docs/wing-states.md`.
 enum StatusIcon {
     static let height: CGFloat = 22
-    private static let wingHeight: CGFloat = 10.0   // 16.2 pt wide — the standard's 24 px minimum at 2x
+    private static let wingHeight: CGFloat = 11.5   // 18.6 pt wide — the standard's 24 px minimum at 2x
     private static var wingWidth: CGFloat { wingHeight * BrandMark.aspect }
 
-    static func render(_ s: Snapshot, overall: Health, powerHealth: Health, mode: MenuBarMode, dark: Bool) -> NSImage {
+    static func render(_ s: Snapshot, channels: [ChannelHealth], overall: Health,
+                       powerHealth: Health, mode: MenuBarMode, dark: Bool) -> NSImage {
         let label: NSColor = dark ? .white : .black
-        let state = Theme.healthNS(overall, dark: dark)
         let font = Theme.nsNumber(11.5, 500)
 
         var segments: [(String, NSColor)] = []
@@ -32,20 +36,10 @@ enum StatusIcon {
         let width = lead + wingWidth + (segments.isEmpty ? 0 : gap + textRun) + trail
 
         let image = NSImage(size: NSSize(width: ceil(width), height: height), flipped: false) { rect in
-            guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
-
-            // Wing mark, in the label colour, sitting above its status rule.
-            let wingBox = CGRect(x: lead, y: rect.midY - wingHeight / 2 + 1.5, width: wingWidth, height: wingHeight)
-            BrandMark.draw(in: wingBox, color: label)
-
-            // Status rule: full width is the mark, filled portion is CPU load, colour is overall health.
-            let ruleY = wingBox.minY - 3, ruleH: CGFloat = 2
-            let track = CGRect(x: wingBox.minX, y: ruleY, width: wingWidth, height: ruleH)
-            ctx.setFillColor(label.withAlphaComponent(0.20).cgColor)
-            ctx.fill(track)
-            let fill = CGRect(x: track.minX, y: ruleY, width: max(2, wingWidth * min(1, max(0.03, s.cpuUsage))), height: ruleH)
-            ctx.setFillColor(state.cgColor)
-            ctx.fill(fill)
+            // The mark, drawn as the gauge — cached on a quantised reading, which matters most
+            // in hot, where the halo is the expensive part. See WingGauge's cache note.
+            let wingBox = CGRect(x: lead, y: rect.midY - wingHeight / 2, width: wingWidth, height: wingHeight)
+            WingGauge.barImage(channels, size: wingBox.size, calmInk: label, dark: dark).draw(in: wingBox)
 
             var x = lead + wingWidth + gap
             for (i, seg) in segments.enumerated() {

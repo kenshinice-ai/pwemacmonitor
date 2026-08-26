@@ -362,26 +362,55 @@ private struct BrandHeader: View {
     @ObservedObject var monitor: Monitor
     let dark: Bool
     var body: some View {
-        let h = monitor.overall
-        HStack(alignment: .center, spacing: Theme.s2) {
-            WingMark(color: Theme.accent(dark)).frame(width: 27, height: 27 / BrandMark.aspect)
-            VStack(alignment: .leading, spacing: 1) {
-                Text("PWE MAC MONITOR").font(Theme.serif(13, 500)).tracking(0.9)
-                Text("\(monitor.soc?.chipName ?? "Apple Silicon") · \(monitor.soc?.memoryGB ?? 0) GB · up \(Fmt.uptime(monitor.snap.uptime))")
-                    .font(Theme.ui(9)).tracking(0.2).foregroundStyle(Theme.muted(dark))
+        let ch = monitor.channels
+        VStack(alignment: .leading, spacing: Theme.s2) {
+            // Bottom-aligned, not centred: the wing's ink sits in the lower left of its box and
+            // sweeps up to the right, so a vertically centred wordmark leaves a hole under the
+            // tip. Setting the text on the root line puts it inside the sweep instead.
+            HStack(alignment: .bottom, spacing: Theme.s2) {
+                // The mark is the gauge. At this size each feather is thick enough to hold its own
+                // colour, so all five channels show — which is the thing the menu bar cannot do.
+                WingGaugeView(channels: ch, dark: dark)
+                    .frame(width: 55 * BrandMark.aspect, height: 55)   // Fibonacci; below this the innermost feather is too thin to hold a colour
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("PWE MAC MONITOR").font(Theme.serif(13, 500)).tracking(0.9)
+                    Text("\(monitor.soc?.chipName ?? "Apple Silicon") · \(monitor.soc?.memoryGB ?? 0) GB · up \(Fmt.uptime(monitor.snap.uptime))")
+                        .font(Theme.ui(9)).tracking(0.2).foregroundStyle(Theme.muted(dark))
+                }
+                .padding(.bottom, Theme.s1)
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
-            HStack(spacing: 5) {
-                Circle().fill(Theme.healthFill(h, dark: dark)).frame(width: 6, height: 6)
-                Text(h == .calm ? "CALM" : h == .warm ? "WARM" : "HOT")
-                    .font(Theme.ui(8.5, 600)).tracking(1.5)
-                    .foregroundStyle(h == .calm ? Theme.muted(dark) : Theme.health(h, dark: dark))
-            }
-            .padding(.horizontal, 9).padding(.vertical, 5)
-            .background(Capsule().fill(h == .calm ? Theme.ink(dark).opacity(dark ? 0.09 : 0.05)
-                                                  : Theme.health(h, dark: dark).opacity(dark ? 0.16 : 0.13)))
+            ChannelLegend(channels: ch, dark: dark)
         }
         .padding(.horizontal, Theme.s4).padding(.vertical, Theme.s3)
+    }
+}
+
+/// Names the feathers. Read left to right it runs innermost feather to outermost, so the strip and
+/// the mark above it are the same five readings in the same order — one is the picture, the other
+/// the key. A calm channel stays uncoloured here exactly as it does everywhere else.
+private struct ChannelLegend: View {
+    let channels: [ChannelHealth]
+    let dark: Bool
+    var body: some View {
+        HStack(spacing: Theme.s1) {
+            ForEach(channels, id: \.channel) { c in
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(c.channel.label)
+                        .font(Theme.ui(8, 600)).tracking(1.2)
+                        .foregroundStyle(c.band == .calm ? Theme.muted(dark) : Theme.health(c.band, dark: dark))
+                    GeometryReader { g in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Theme.rail(dark))
+                            Capsule().fill(Theme.healthFill(c.band, dark: dark))
+                                .frame(width: max(2, g.size.width * c.fill))
+                        }
+                    }
+                    .frame(height: 2)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
     }
 }
 
@@ -449,6 +478,24 @@ struct SettingsButton: NSViewRepresentable {
         override var intrinsicContentSize: NSSize { NSSize(width: 26, height: 20) }
         override var acceptsFirstResponder: Bool { false }
         override func mouseDown(with event: NSEvent) { present?(self) }
+    }
+}
+
+/// The mark as a live gauge, for the panel. `WingMark` remains the identity form.
+struct WingGaugeView: NSViewRepresentable {
+    let channels: [ChannelHealth]
+    let dark: Bool
+    func makeNSView(context: Context) -> GaugeView { GaugeView() }
+    func updateNSView(_ v: GaugeView, context: Context) {
+        v.channels = channels; v.dark = dark; v.needsDisplay = true
+    }
+    final class GaugeView: NSView {
+        var channels: [ChannelHealth] = []
+        var dark = true
+        override func draw(_ dirtyRect: NSRect) {
+            WingGauge.draw(channels, in: bounds, calmInk: NSColor(Theme.ink(dark)),
+                           dark: dark, perFeather: true)
+        }
     }
 }
 

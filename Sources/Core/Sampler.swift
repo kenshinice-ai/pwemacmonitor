@@ -4,6 +4,38 @@ enum Health: Int, Comparable {
     case calm = 0, warm = 1, hot = 2
     static func < (a: Health, b: Health) -> Bool { a.rawValue < b.rawValue }
     static func grade(_ v: Double, warm: Double, hot: Double) -> Health { v >= hot ? .hot : v >= warm ? .warm : .calm }
+
+    /// Warm begins at this fraction of the way to trouble, for every channel alike.
+    static let warmMark = 0.72
+
+    /// Re-express a reading as the distance it has travelled toward its own hot threshold:
+    /// 0 at rest, exactly `warmMark` at the warm threshold, exactly 1 at the hot one, and past
+    /// 1 beyond it. Putting every channel on one scale is what lets a feather's length and its
+    /// colour come from a single number, so the two can never disagree — and it means the same
+    /// fraction of a feather means the same thing whether the channel counts watts or degrees.
+    static func strain(_ v: Double, warm: Double, hot: Double) -> Double {
+        guard hot > warm, warm > 0, v > 0 else { return 0 }
+        if v < warm { return warmMark * v / warm }
+        return warmMark + (1 - warmMark) * (v - warm) / (hot - warm)
+    }
+}
+
+/// The five channels the wing mark reports, innermost feather first. Fixed at five: the mark has
+/// five feathers and the identity standard forbids changing that count, so a sixth channel would
+/// have nowhere to go. Battery therefore rides with power rather than claiming a feather.
+enum Channel: Int, CaseIterable {
+    case memory = 0, ssd, power, gpu, cpu
+    var label: String { ["MEM", "SSD", "PWR", "GPU", "CPU"][rawValue] }
+    var name: String { ["Memory", "Storage", "Power", "GPU", "CPU"][rawValue] }
+}
+
+/// One channel's reading, expressed twice: `band` is which tier it has entered, `fill` how far
+/// through the tier it is. Both are derived from the same strain value, so a feather can never
+/// be short and red or long and quiet.
+struct ChannelHealth {
+    let channel: Channel
+    let band: Health
+    let fill: Double        // 0…1, clamped for drawing; the band already records any overshoot
 }
 
 struct CoreMetric: Identifiable {
@@ -82,7 +114,45 @@ struct Snapshot {
         return Health.grade(sysPower, warm: hot * 0.45, hot: hot)
     }
     func overall(chipClass: String) -> Health {
-        [cpuTempMaxHealth, gpuTempHealth, ssdTempHealth, memoryHealth, powerHealth(chipClass: chipClass), batteryHealth].max() ?? .calm
+        channels(chipClass: chipClass).map(\.band).max() ?? .calm
+    }
+
+    /// Strain per channel, innermost feather first. Every band shown anywhere in the interface
+    /// comes from here — including `overall` — so the mark, the legend and the cards cannot
+    /// drift apart. Thresholds are the same ones the individual `*Health` properties use.
+    func channels(chipClass: String) -> [ChannelHealth] {
+        Channel.allCases.map { c in
+            let v: Double
+            switch c {
+            case .memory:
+                // Pressure decides hot: on macOS a high used ratio is ordinary — the compressor
+                // and purgeable pages see to that — so usage can raise the channel to warm but
+                // is capped below hot, which is exactly what `memoryHealth` has always done.
+                let byUsage = min(Health.warmMark + 0.14,
+                                  Health.strain(memory.usedRatio, warm: 0.85, hot: 1.0))
+                let byPressure = Health.strain(100 - Double(memory.pressure), warm: 25, hot: 55)
+                v = max(byUsage, byPressure)
+            case .ssd:
+                v = ssdTemp == 0 ? 0 : Health.strain(ssdTemp, warm: 55, hot: 68)
+            case .power:
+                let envelope: Double = ["Ultra": 120, "Max": 80, "Pro": 45][chipClass] ?? 22
+                var s = Health.strain(sysPower, warm: envelope * 0.45, hot: envelope)
+                if battery.present {
+                    s = max(s, Health.strain(battery.temperature, warm: 38, hot: 42))
+                    if !battery.externalPower {
+                        s = max(s, Health.strain(100 - Double(battery.percent), warm: 80, hot: 90))
+                    }
+                }
+                v = s
+            case .gpu:
+                v = Health.strain(gpuTemp, warm: 75, hot: 92)
+            case .cpu:
+                v = Health.strain(cpuTempMax, warm: 75, hot: 92)
+            }
+            return ChannelHealth(channel: c,
+                                 band: Health.grade(v, warm: Health.warmMark, hot: 1),
+                                 fill: min(1, v))
+        }
     }
 }
 

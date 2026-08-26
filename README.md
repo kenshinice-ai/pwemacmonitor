@@ -44,9 +44,23 @@ Left-click opens the dashboard. Right-click opens settings.
 
 | | |
 |---|---|
-| <img src="docs/menubar-icon-dark.png" width="90"> | **Wing only** — the rule under the mark fills with CPU load |
+| <img src="docs/menubar-icon-dark.png" width="90"> | **Wing only** — the mark itself is the gauge |
 | <img src="docs/menubar-compact-dark.png" width="150"> | **Power + temperature** |
 | <img src="docs/menubar-full-dark.png" width="200"> | **CPU + power + temperature** |
+
+### The mark is the gauge
+
+The wing is not decoration sitting next to the readings. Each of its five feathers is one health
+channel — memory, storage, power, GPU, CPU, reading outward from the short feather at the bottom.
+Colour travels out along a feather as that channel approaches its limit, so the panel's header
+tells you *which* subsystem is under load without your reading a single number.
+
+In the menu bar the wing carries one colour, not five: at 22 pt a feather is about a point thick,
+and five tints there turn into a smear. Whole-mark colour answers the only question a menu bar can
+answer — is anything wrong — and the panel answers the rest. [The full design record, including
+the prototype that settled it, is in `docs/wing-states.md`](docs/wing-states.md).
+
+When nothing is wrong the mark is drawn solid, exactly as the brand standard draws it.
 
 ### What the colours mean
 

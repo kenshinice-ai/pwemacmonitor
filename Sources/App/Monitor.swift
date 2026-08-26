@@ -87,6 +87,8 @@ final class Monitor: ObservableObject {
     }
 
     var overall: Health { snap.overall(chipClass: soc?.chipClass ?? "Base") }
+    /// The five wing channels. Everything that shows a band reads from here.
+    var channels: [ChannelHealth] { snap.channels(chipClass: soc?.chipClass ?? "Base") }
     var powerHealth: Health { snap.powerHealth(chipClass: soc?.chipClass ?? "Base") }
 
     func restart() {
