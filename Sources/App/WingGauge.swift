@@ -14,7 +14,14 @@ enum WingGauge {
     /// Alpha of the unlit part of a feather — the stretch a warm or hot channel has not reached
     /// yet. High enough that the feather still reads as part of the mark rather than a broken
     /// stub. Calm channels never show it: they are drawn solid.
-    static func railAlpha(_ dark: Bool) -> CGFloat { dark ? 0.42 : 0.30 }
+    ///
+    /// A faint rail against a lit feather is exactly the distinction Increase Contrast exists to
+    /// rescue, so under that setting it climbs until the whole feather is plainly there and only
+    /// the colour separates reached from unreached.
+    static func railAlpha(_ dark: Bool) -> CGFloat {
+        if NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast { return dark ? 0.80 : 0.72 }
+        return dark ? 0.42 : 0.30
+    }
 
     /// Halo for a feather that has crossed its threshold. Hot only, and only on the feather that
     /// crossed — if everything glows, glowing stops being a signal. On paper a bright halo reads

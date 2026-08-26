@@ -98,7 +98,9 @@ struct DashboardView: View {
             }
             .lineLimit(1).minimumScaleFactor(0.7)
             Sparkline(values: series, ceiling: ceiling, color: Theme.healthFill(h, dark: dark)).frame(height: 21).padding(.top, 2)
-                .help("Last \(Theme.historyLength) samples · \(Int(Double(Theme.historyLength) * monitor.interval / 60)) min at \(Int(monitor.interval))s")
+                .help(series.count < Sparkline.minimumSamples
+                      ? "Building history — \(series.count) of \(Sparkline.minimumSamples) samples needed before the trend means anything"
+                      : "Last \(Theme.historyLength) samples · \(Int(Double(Theme.historyLength) * monitor.interval / 60)) min at \(Int(monitor.interval))s")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -108,11 +110,13 @@ struct DashboardView: View {
         VStack(spacing: Theme.s3) {
             Card(dark: dark, title: "THERMALS") {
                 VStack(spacing: 7) {
-                    gauge("CPU avg", s.cpuTemp, s.cpuTempHealth)
-                    gauge("CPU max", s.cpuTempMax, s.cpuTempMaxHealth)
-                    gauge("GPU", s.gpuTemp, s.gpuTempHealth)
-                    gauge("SSD", s.ssdTemp, s.ssdTempHealth)
-                    gauge("Battery", s.batteryTemp, s.batteryHealth)
+                    gauge("CPU avg", s.cpuTemp, s.cpuTempHealth, hot: 92)
+                    gauge("CPU max", s.cpuTempMax, s.cpuTempMaxHealth, hot: 92)
+                    gauge("GPU", s.gpuTemp, s.gpuTempHealth, hot: 92)
+                    gauge("SSD", s.ssdTemp, s.ssdTempHealth, hot: 68)
+                    // Graded on its own reading, not on `batteryHealth`: that one folds in charge
+                    // level, so a nearly flat battery used to turn this temperature row red.
+                    gauge("Battery", s.batteryTemp, Health.grade(s.batteryTemp, warm: 38, hot: 42), hot: 42)
                 }
             }
             fans
@@ -124,15 +128,27 @@ struct DashboardView: View {
         VStack(spacing: Theme.s3) { memory; storage; network }
     }
     /// Temperature bars share a 20–100 °C scale so the five rows are visually comparable.
-    private func gauge(_ name: String, _ v: Double, _ h: Health) -> some View {
+    /// The bar runs from room temperature to 100 °C — the same scale on every row, so their
+    /// lengths are comparable. It is not a distance-to-limit scale; `hot` is only carried here so
+    /// the hover can say where the limit actually is, which differs per sensor.
+    private func gauge(_ name: String, _ v: Double, _ h: Health, hot: Double) -> some View {
         VStack(spacing: 3) {
             HStack(spacing: 4) {
                 Text(name).font(Theme.ui(10)).foregroundStyle(Theme.muted(dark))
                 Spacer(minLength: 0)
-                Text(Fmt.temp1(v)).font(Theme.number(10, 600)).foregroundStyle(Theme.health(h, dark: dark))
+                // No sensor reads 0 °C in a running Mac, so 0 means absent — a desktop with no
+                // battery, or a read that failed this tick. The row stays, because cards are
+                // fixed height on purpose: one that shrinks makes the whole popover jump.
+                Text(v > 0 ? Fmt.temp1(v) : "—").font(Theme.number(10, 600))
+                    .foregroundStyle(v > 0 ? Theme.health(h, dark: dark) : Theme.muted(dark))
             }
-            Bar(value: (v - 20) / 80, color: Theme.healthFill(h, dark: dark), dark: dark)
+            Bar(value: v > 0 ? (v - 20) / 80 : 0, color: Theme.healthFill(h, dark: dark), dark: dark)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(name)
+        .accessibilityValue(v > 0 ? "\(Fmt.temp1(v)), \(h.word)" : "no reading")
+        .help(v > 0 ? "\(Fmt.temp1(v)) · \(h.word) · throttles at \(Int(hot)) °C · bar spans 20–100 °C"
+                    : "no reading from this sensor")
     }
 
     // MARK: Fans
@@ -372,6 +388,9 @@ private struct BrandHeader: View {
                 // colour, so all five channels show — which is the thing the menu bar cannot do.
                 WingGaugeView(channels: ch, dark: dark)
                     .frame(width: 55 * BrandMark.aspect, height: 55)   // Fibonacci; below this the innermost feather is too thin to hold a colour
+                    .accessibilityElement()
+                    .accessibilityLabel("System state")
+                    .accessibilityValue(ch.spoken)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("PWE MAC MONITOR").font(Theme.serif(13, 500)).tracking(0.9)
                     Text("\(monitor.soc?.chipName ?? "Apple Silicon") · \(monitor.soc?.memoryGB ?? 0) GB · up \(Fmt.uptime(monitor.snap.uptime))")
@@ -409,6 +428,9 @@ private struct ChannelLegend: View {
                     .frame(height: 2)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(c.channel.name)
+                .accessibilityValue("\(c.band.word), \(Int((c.fill * 100).rounded())) percent of the way to its limit")
             }
         }
     }
@@ -599,6 +621,9 @@ struct CoreBar: View {
 }
 
 struct Sparkline: View {
+    /// About a tenth of the window — enough width for a slope to mean something.
+    static let minimumSamples = 9
+
     let values: [Double]
     let ceiling: Double?
     let color: Color
@@ -615,7 +640,12 @@ struct Sparkline: View {
                 p.addLine(to: CGPoint(x: g.size.width, y: g.size.height - 0.5))
             }
             .stroke(color.opacity(0.18), lineWidth: 1)
-            if pts.count > 1 {
+            // New samples enter at the right, so a fresh buffer puts everything it has into the
+            // last pixel or two — and the first reading of a rail is often 0 because the counter
+            // has not been read yet. Drawn, that is a vertical spike against the baseline, which
+            // reads as a broken chart rather than as a young one. Below a readable footprint the
+            // card shows its baseline and nothing else, which is what is actually true.
+            if pts.count >= Sparkline.minimumSamples {
                 Path { p in
                     p.move(to: CGPoint(x: pts[0].x, y: g.size.height))
                     pts.forEach { p.addLine(to: $0) }

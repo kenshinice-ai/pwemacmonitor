@@ -4,6 +4,7 @@ enum Health: Int, Comparable {
     case calm = 0, warm = 1, hot = 2
     static func < (a: Health, b: Health) -> Bool { a.rawValue < b.rawValue }
     static func grade(_ v: Double, warm: Double, hot: Double) -> Health { v >= hot ? .hot : v >= warm ? .warm : .calm }
+    var word: String { ["calm", "warm", "hot"][rawValue] }
 
     /// Warm begins at this fraction of the way to trouble, for every channel alike.
     static let warmMark = 0.72
@@ -130,7 +131,10 @@ struct Snapshot {
                 // is capped below hot, which is exactly what `memoryHealth` has always done.
                 let byUsage = min(Health.warmMark + 0.14,
                                   Health.strain(memory.usedRatio, warm: 0.85, hot: 1.0))
-                let byPressure = Health.strain(100 - Double(memory.pressure), warm: 25, hot: 55)
+                // 26 and 56, not 25 and 55: `pressure` is an integer and the rule this replaces
+                // was `< 75` / `< 45`, i.e. `<= 74` / `<= 44`. Off by one here shifts the whole
+                // channel a step early, which a sweep across every value catches and nothing else does.
+                let byPressure = Health.strain(100 - Double(memory.pressure), warm: 26, hot: 56)
                 v = max(byUsage, byPressure)
             case .ssd:
                 v = ssdTemp == 0 ? 0 : Health.strain(ssdTemp, warm: 55, hot: 68)
@@ -138,9 +142,13 @@ struct Snapshot {
                 let envelope: Double = ["Ultra": 120, "Max": 80, "Pro": 45][chipClass] ?? 22
                 var s = Health.strain(sysPower, warm: envelope * 0.45, hot: envelope)
                 if battery.present {
-                    s = max(s, Health.strain(battery.temperature, warm: 38, hot: 42))
+                    // `.nextUp` because `strain` grades inclusively and the rule this replaces
+                    // was strictly greater. Cheaper to be exact than to argue about whether a
+                    // sensor can report 38.000000.
+                    s = max(s, Health.strain(battery.temperature, warm: 38.0.nextUp, hot: 42.0.nextUp))
                     if !battery.externalPower {
-                        s = max(s, Health.strain(100 - Double(battery.percent), warm: 80, hot: 90))
+                        // Likewise integer percent: `< 20` / `< 10`.
+                        s = max(s, Health.strain(100 - Double(battery.percent), warm: 81, hot: 91))
                     }
                 }
                 v = s
@@ -153,6 +161,19 @@ struct Snapshot {
                                  band: Health.grade(v, warm: Health.warmMark, hot: 1),
                                  fill: min(1, v))
         }
+    }
+}
+
+extension Array where Element == ChannelHealth {
+    /// What the wing says, in words. The gauge encodes state as colour and feather length, so
+    /// without this VoiceOver reaches the most important element in the interface and finds
+    /// nothing there.
+    var spoken: String {
+        let notable = filter { $0.band != .calm }
+            .sorted { $0.band > $1.band }
+        guard !notable.isEmpty else { return "All five channels calm." }
+        let list = notable.map { "\($0.channel.name) \($0.band.word), \(Int(($0.fill * 100).rounded())) percent of the way to its limit" }
+        return list.joined(separator: ". ") + ". The rest calm."
     }
 }
 

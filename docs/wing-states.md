@@ -116,6 +116,18 @@ Do not trust that reasoning without re-running it. The first measurement here ap
 cache saving nothing, because `NSImage`'s drawing handler is lazy: timing `StatusIcon.render`
 without rasterising the result measures allocation and nothing else.
 
+## Reading it without colour
+
+Because every channel is on the same strain scale, warm begins at 0.72 of a feather and hot at
+1.0 on all five. Feather length and legend-bar length therefore encode the band as well as the
+colour does — the gauge is readable without relying on hue at all.
+
+Under **Increase Contrast** the unlit rail climbs from 0.42 to 0.80 (dark) so the whole feather
+stays plainly present and only colour separates reached from unreached.
+
+VoiceOver gets `ch.spoken` from the header gauge — "Power hot, 100 percent of the way to its
+limit. CPU warm, 88 percent…" — and each legend column carries its own label and value.
+
 ## Checking it
 
 ```
