@@ -13,8 +13,8 @@
 # Remember to update version and sha256 on every release.
 
 cask "pwe-mac-monitor" do
-  version "1.1.0"
-  sha256 "ba858379c023e3decbef8838df038f8a7e275517a5decf77d4024d92f17f87a8"
+  version "1.1.1"
+  sha256 "4a71b7ba5051deb996c43b66a446723a9a28172cc40562dad4c3587256359890"
 
   url "https://github.com/kenshinice-ai/pwemacmonitor/releases/download/v#{version}/PWE-MAC-MONITOR-#{version}.dmg"
   name "PWE MAC MONITOR"
