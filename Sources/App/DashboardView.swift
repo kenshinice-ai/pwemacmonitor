@@ -36,7 +36,17 @@ struct DashboardView: View {
                     if let e = monitor.error { banner(e) }
                     hero
                     silicon
-                    HStack(alignment: .top, spacing: Theme.s3) { thermals; rightColumn }
+                    // A Grid, not two VStacks side by side. Independent columns take each card
+                    // at its natural height, so any difference in the first row pushes everything
+                    // below it out of step — measured at 4.5 pt after the first row and 38.5 pt by
+                    // the third, with the shortfall left as a hole under the left column. Pairing
+                    // the cards into rows makes every horizontal edge line up and costs no height:
+                    // the taller column already set the section's height.
+                    Grid(horizontalSpacing: Theme.s3, verticalSpacing: Theme.s3) {
+                        GridRow { thermalCard; memory }
+                        GridRow { fans; storage }
+                        GridRow { battery; network }
+                    }
                     processes
                     if monitor.showSensors { sensors }
                     signature
@@ -70,17 +80,23 @@ struct DashboardView: View {
         Card(dark: dark) {
             HStack(alignment: .top, spacing: 0) {
                 heroStat("CPU", Fmt.pct(s.cpuUsage), Fmt.ghz(s.pcpuFreq), Fmt.temp(s.cpuTempMax), s.cpuTempMaxHealth,
-                         s.cpuLoadHealth, monitor.history["cpu"] ?? [], ceiling: 1)
+                         busy(s.cpuLoadHealth), monitor.history["cpu"] ?? [], ceiling: 1)
                 rule
                 heroStat("GPU", Fmt.pct(s.gpuUsage), s.gpuFreq > 0 ? "\(s.gpuFreq) MHz" : "idle",
                          s.gpuTemp > 0 ? Fmt.temp(s.gpuTemp) : nil, s.gpuTempHealth,
-                         s.gpuLoadHealth, monitor.history["gpu"] ?? [], ceiling: 1)
+                         busy(s.gpuLoadHealth), monitor.history["gpu"] ?? [], ceiling: 1)
                 rule
                 heroStat("POWER", Fmt.watts(s.sysPower), "chip \(Fmt.watts(s.allPower))", nil, .calm,
                          monitor.powerHealth, monitor.history["power"] ?? [], ceiling: nil)
             }
         }
     }
+    /// Load is not a fault. A GPU at 100 % is doing what it was asked to do, and painting that
+    /// coral put a harder verdict on the screen than the wing gave the same subsystem two inches
+    /// above — coral there means a limit has been crossed. Busy tops out at warm; coral stays with
+    /// the channels that actually grade against a limit, temperature and power among them.
+    private func busy(_ h: Health) -> Health { min(h, .warm) }
+
     private var rule: some View { Rectangle().fill(Theme.stroke(dark)).frame(width: 1, height: 66).padding(.horizontal, Theme.s3) }
 
     private func heroStat(_ title: String, _ value: String, _ sub: String, _ temp: String?, _ tempHealth: Health,
@@ -106,27 +122,20 @@ struct DashboardView: View {
     }
 
     // MARK: Thermals
-    private var thermals: some View {
-        VStack(spacing: Theme.s3) {
-            Card(dark: dark, title: "THERMALS") {
-                VStack(spacing: 7) {
-                    gauge("CPU avg", s.cpuTemp, s.cpuTempHealth, hot: 92)
-                    gauge("CPU max", s.cpuTempMax, s.cpuTempMaxHealth, hot: 92)
-                    gauge("GPU", s.gpuTemp, s.gpuTempHealth, hot: 92)
-                    gauge("SSD", s.ssdTemp, s.ssdTempHealth, hot: 68)
-                    // Graded on its own reading, not on `batteryHealth`: that one folds in charge
-                    // level, so a nearly flat battery used to turn this temperature row red.
-                    gauge("Battery", s.batteryTemp, Health.grade(s.batteryTemp, warm: 38, hot: 42), hot: 42)
-                }
+    private var thermalCard: some View {
+        Card(dark: dark, title: "THERMALS", fills: true) {
+            VStack(spacing: 7) {
+                gauge("CPU avg", s.cpuTemp, s.cpuTempHealth, hot: 92)
+                gauge("CPU max", s.cpuTempMax, s.cpuTempMaxHealth, hot: 92)
+                gauge("GPU", s.gpuTemp, s.gpuTempHealth, hot: 92)
+                gauge("SSD", s.ssdTemp, s.ssdTempHealth, hot: 68)
+                // Graded on its own reading, not on `batteryHealth`: that one folds in charge
+                // level, so a nearly flat battery used to turn this temperature row red.
+                gauge("Battery", s.batteryTemp, Health.grade(s.batteryTemp, warm: 38, hot: 42), hot: 42)
             }
-            fans
-            battery
         }
     }
 
-    private var rightColumn: some View {
-        VStack(spacing: Theme.s3) { memory; storage; network }
-    }
     /// Temperature bars share a 20–100 °C scale so the five rows are visually comparable.
     /// The bar runs from room temperature to 100 °C — the same scale on every row, so their
     /// lengths are comparable. It is not a distance-to-limit scale; `hot` is only carried here so
@@ -154,7 +163,7 @@ struct DashboardView: View {
     // MARK: Fans
     private var fans: some View {
         Group {
-            Card(dark: dark, title: "FANS") {
+            Card(dark: dark, title: "FANS", fills: true) {
                 if s.fans.isEmpty {
                     Text("Fanless design").font(Theme.ui(10)).foregroundStyle(Theme.muted(dark))
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -179,7 +188,7 @@ struct DashboardView: View {
     // MARK: Battery
     private var battery: some View {
         Group {
-            Card(dark: dark, title: "BATTERY") {
+            Card(dark: dark, title: "BATTERY", fills: true) {
                 let b = s.battery
                 if !b.present {
                     Text("No battery").font(Theme.ui(10)).foregroundStyle(Theme.muted(dark))
@@ -200,7 +209,7 @@ struct DashboardView: View {
 
     // MARK: Memory
     private var memory: some View {
-        Card(dark: dark, title: "MEMORY") {
+        Card(dark: dark, title: "MEMORY", fills: true) {
             let m = s.memory
             VStack(spacing: 5) {
                 Headline(Fmt.gib(m.used), note: "of \(Fmt.gib(m.total))",
@@ -223,7 +232,7 @@ struct DashboardView: View {
     // MARK: Storage
     private var storage: some View {
         Group {
-            Card(dark: dark, title: s.disk.name.isEmpty ? "SSD" : "SSD · \(s.disk.name.uppercased())") {
+            Card(dark: dark, title: s.disk.name.isEmpty ? "SSD" : "SSD · \(s.disk.name.uppercased())", fills: true) {
                 let d = s.disk
                 VStack(spacing: 5) {
                     Headline(Fmt.bytes(Double(d.total - d.free)), note: "of \(Fmt.bytes(Double(d.total)))",
@@ -231,7 +240,8 @@ struct DashboardView: View {
                     Bar(value: d.usedRatio, color: Theme.healthFill(s.diskHealth, dark: dark), dark: dark)
                     kv("Read", Fmt.rate(s.diskReadPerSec))
                     kv("Write", Fmt.rate(s.diskWritePerSec))
-                    kv("Temp", Fmt.temp1(s.ssdTemp), color: Theme.health(s.ssdTempHealth, dark: dark))
+                    // No Temp row: THERMALS already carries the SSD sensor, and printing one
+                    // reading in two places is how the two quietly drift apart.
                 }
             }
         }
@@ -241,7 +251,8 @@ struct DashboardView: View {
     private var network: some View {
         Group {
             Card(dark: dark, title: s.network.primaryInterface.isEmpty ? "NETWORK"
-                                                                     : "NETWORK · \(s.network.primaryInterface.uppercased())") {
+                                                                     : "NETWORK · \(s.network.primaryInterface.uppercased())",
+                 fills: true) {
                 VStack(spacing: 5) {
                     kv("Down", Fmt.rate(s.netInPerSec))
                     kv("Up", Fmt.rate(s.netOutPerSec))
@@ -280,12 +291,17 @@ struct DashboardView: View {
 
                 // Power rails. The Neural Engine and DRAM figures come from IOReport's energy model
                 // and are the part of an Apple Silicon power budget that most monitors never show.
-                let rails: [(String, Double, Color)] = [
-                    ("CPU", s.cpuPower, Theme.seriesPrimary(dark)),
-                    ("GPU", s.gpuPower, Theme.series(0, dark)),
-                    ("ANE", s.anePower, Theme.series(1, dark)),
-                    ("DRAM", s.ramPower, Theme.series(2, dark)),
-                ]
+                // Reading order is fixed, but the accent follows the watts: under a GPU load the
+                // bar was a long flat grey with a hair of amber on a 0.4 W CPU, which is the exact
+                // opposite of what the bar is for. Amber marks whichever rail the power is going
+                // to; the rest step down the neutral ramp in rank order.
+                let raw = [("CPU", s.cpuPower), ("GPU", s.gpuPower), ("ANE", s.anePower), ("DRAM", s.ramPower)]
+                let rank = Dictionary(uniqueKeysWithValues:
+                    raw.sorted { $0.1 > $1.1 }.enumerated().map { ($0.element.0, $0.offset) })
+                let rails: [(String, Double, Color)] = raw.map { name, watts in
+                    let r = rank[name] ?? 3
+                    return (name, watts, r == 0 ? Theme.seriesPrimary(dark) : Theme.series(r - 1, dark))
+                }
                 let railTotal = max(rails.reduce(0) { $0 + $1.1 }, 0.001)
                 StackedBar(parts: rails.map { ($0.1, $0.2) }, total: railTotal, dark: dark)
                 HStack(spacing: Theme.s3) {
@@ -319,13 +335,23 @@ struct DashboardView: View {
                         Text(p.map { Fmt.bytes(Double($0.memoryBytes)) } ?? "").font(Theme.number(9, 400))
                             .foregroundStyle(Theme.muted(dark)).frame(width: 52, alignment: .trailing)
                         Text(p.map { String(format: "%.1f%%", $0.cpuPercent) } ?? "").font(Theme.number(10, 600))
-                            .foregroundStyle(Theme.health(Health.grade(p?.cpuPercent ?? 0, warm: 50, hot: 150), dark: dark))
+                            .foregroundStyle(Theme.health(processHealth(p?.cpuPercent ?? 0), dark: dark))
                             .frame(width: 46, alignment: .trailing)
                     }
                     .frame(height: 13)
                 }
             }
         }
+    }
+
+    /// The number stays a share of one core, the way every other Mac tool reports it, but the
+    /// colour is a share of *this* machine. Grading 150 % of a core as hot painted an ordinary
+    /// video call red on a 16-core M4 Max, where it was using a tenth of the Mac — and colour that
+    /// fires on nothing teaches the reader to stop looking, which is the one thing this palette
+    /// cannot afford.
+    private func processHealth(_ percentOfOneCore: Double) -> Health {
+        let cores = Double(max(1, (monitor.soc?.ecpuCores ?? 0) + (monitor.soc?.pcpuCores ?? 0)))
+        return Health.grade(percentOfOneCore / (cores * 100), warm: 0.125, hot: 0.333)
     }
 
     // MARK: All sensors
@@ -534,6 +560,9 @@ struct WingMark: NSViewRepresentable {
 struct Card<Content: View>: View {
     let dark: Bool
     var title: String? = nil
+    /// Stretch to the height offered. Set on cards inside the paired grid, so a row's two
+    /// backgrounds share an edge instead of each stopping at its own content.
+    var fills: Bool = false
     @ViewBuilder let content: Content
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.s2) {
@@ -541,7 +570,7 @@ struct Card<Content: View>: View {
             content
         }
         .padding(Theme.s3)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: fills ? .infinity : nil, alignment: .topLeading)
         .background(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).fill(Theme.card(dark)))
         .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).stroke(Theme.stroke(dark), lineWidth: 1))
     }
