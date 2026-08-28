@@ -26,7 +26,15 @@ cask "pwe-mac-monitor" do
 
   app "PWE MAC MONITOR.app"
 
+  # This one lives in the menu bar and is therefore almost always running when an upgrade
+  # arrives. Without this, brew replaces the bundle underneath the running process: the old
+  # code keeps running, the menu bar keeps showing the old version, and the upgrade looks
+  # like it silently did nothing.
+  uninstall quit: "au.com.pwe.macmonitor"
+
   zap trash: [
+    "~/Library/Caches/au.com.pwe.macmonitor",
+    "~/Library/HTTPStorages/au.com.pwe.macmonitor",
     "~/Library/Preferences/au.com.pwe.macmonitor.plist",
   ]
 end

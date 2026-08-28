@@ -145,7 +145,9 @@ echo "✓ release published"
 TAP_DIR=$(mktemp -d)
 git clone -q "https://github.com/$TAP_REPO.git" "$TAP_DIR"
 cp Casks/pwe-mac-monitor.rb "$TAP_DIR/Casks/pwe-mac-monitor.rb"
-sed -i '' '1,/^cask /{/^#/d;}' "$TAP_DIR/Casks/pwe-mac-monitor.rb"
+# Strip this repo's setup notes from the published cask. Deleting only comment lines left the
+# blank line that followed them, which `brew style` flags.
+sed -i '' '1,/^cask /{/^cask /!d;}' "$TAP_DIR/Casks/pwe-mac-monitor.rb"
 git -C "$TAP_DIR" add -A
 git -C "$TAP_DIR" commit -q -m "pwe-mac-monitor $VERSION"
 git -C "$TAP_DIR" push -q origin HEAD

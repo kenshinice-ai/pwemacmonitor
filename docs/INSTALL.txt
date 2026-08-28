@@ -7,12 +7,16 @@ INSTALLING
    at the top right of the screen.
 3. Click the wing to open the dashboard. Right-click it for settings.
 
-IF macOS SAYS IT CANNOT CHECK THE APP FOR MALICIOUS SOFTWARE
-This build is not notarised by Apple, so macOS asks before running it the first time.
-   1. Open System Settings ▸ Privacy & Security.
-   2. Scroll to Security. There will be a line about PWE MAC MONITOR being blocked.
-   3. Click "Open Anyway", then confirm.
-You only have to do this once.
+SECURITY
+This app is signed with a Developer ID certificate and notarised by Apple, so it opens
+normally — there is no warning to click through and nothing to allow in System Settings.
+If macOS ever does warn you about a copy of this app, that copy did not come from us.
+
+UPDATING
+Quit the running app from the menu bar first, then drag the new version across.
+Or install it with Homebrew, which handles that for you:
+   brew install --cask kenshinice-ai/tap/pwe-mac-monitor
+   brew upgrade --cask kenshinice-ai/tap/pwe-mac-monitor
 
 REQUIREMENTS
 macOS 14 (Sonoma) or later, on an Apple Silicon Mac (M1 or newer).

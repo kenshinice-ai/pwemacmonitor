@@ -92,22 +92,42 @@ brew install --cask kenshinice-ai/tap/pwe-mac-monitor
 The cask source lives in [`Casks/pwe-mac-monitor.rb`](Casks/pwe-mac-monitor.rb) and is published to
 [kenshinice-ai/homebrew-tap](https://github.com/kenshinice-ai/homebrew-tap).
 
-### First launch: "macOS cannot check it for malicious software"
-
-Releases are ad-hoc signed, not notarised by Apple, so macOS asks before running it once:
-
-1. **System Settings ▸ Privacy & Security**
-2. Scroll to **Security**. There is a line about PWE MAC MONITOR being blocked.
-3. Click **Open Anyway** and confirm.
-
-Or, from the Terminal:
+### Upgrading
 
 ```bash
-xattr -dr com.apple.quarantine "/Applications/PWE MAC MONITOR.app"
+brew upgrade --cask kenshinice-ai/tap/pwe-mac-monitor
 ```
 
-You only do this once. If you would rather not, [build it from source](#build-from-source) — a
-locally built app is never quarantined.
+If Homebrew answers *"the latest version is already installed"* while the menu bar still shows the
+old build, your copy of the tap is stale — Homebrew does not re-fetch a third-party tap on every
+command:
+
+```bash
+brew update && brew upgrade --cask kenshinice-ai/tap/pwe-mac-monitor
+```
+
+The cask quits the running app before replacing it, which a menu-bar app needs: otherwise the
+bundle is swapped underneath the running process and the old version stays in your menu bar until
+the next login.
+
+Downloaded the `.dmg` instead? Quit it from the menu bar first, then drag the new one across.
+
+### Verifying a download
+
+Releases are signed with a Developer ID certificate and notarised by Apple, so there is no
+"unidentified developer" prompt to work around. To check a download yourself, from the folder you
+downloaded into:
+
+```bash
+shasum -a 256 -c SHA256SUMS.txt
+```
+
+```bash
+spctl -a -t open --context context:primary-signature -vv PWE-MAC-MONITOR-*.dmg
+```
+
+The second should report `accepted` and `source=Notarized Developer ID`. Each release page lists
+the expected SHA-256 as well, in case you took only the disk image.
 
 ### Requirements
 
@@ -162,9 +182,10 @@ involve Apple credentials:
    It prompts for an app-specific password, which you create at
    [appleid.apple.com](https://appleid.apple.com) under *Sign-In and Security*.
 
-CI can do the same on a tag push once `MACOS_CERTIFICATE`, `MACOS_CERTIFICATE_PASSWORD`,
-`NOTARY_APPLE_ID`, `NOTARY_TEAM_ID` and `NOTARY_PASSWORD` exist as repository secrets; without them
-it still builds and publishes an ad-hoc signed disk image.
+`Tools/release.sh` is the only thing that publishes. CI builds every push to `main` as a check and
+stops there — it has no signing identity, so anything it produced would be ad-hoc signed. It once
+raced a release and overwrote a notarised disk image with an unsigned one, which is why it no
+longer touches releases at all.
 
 ## Command line
 
