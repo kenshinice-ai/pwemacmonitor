@@ -4,7 +4,15 @@ enum Health: Int, Comparable {
     case calm = 0, warm = 1, hot = 2
     static func < (a: Health, b: Health) -> Bool { a.rawValue < b.rawValue }
     static func grade(_ v: Double, warm: Double, hot: Double) -> Health { v >= hot ? .hot : v >= warm ? .warm : .calm }
-    var word: String { ["calm", "warm", "hot"][rawValue] }
+    /// Band as a word. "warm" and "hot" are the metaphor the whole instrument runs on, so they
+    /// stay temperature-shaped in every language even on the channels that count bytes or watts.
+    var word: String {
+        switch self {
+        case .calm: return L("health.calm", "calm")
+        case .warm: return L("health.warm", "warm")
+        case .hot:  return L("health.hot", "hot")
+        }
+    }
 
     /// Warm begins at this fraction of the way to trouble, for every channel alike.
     static let warmMark = 0.72
@@ -26,8 +34,18 @@ enum Health: Int, Comparable {
 /// have nowhere to go. Battery therefore rides with power rather than claiming a feather.
 enum Channel: Int, CaseIterable {
     case memory = 0, ssd, power, gpu, cpu
+    /// Never translated: these five key the five feathers, and `docs/wing-states.md` defines the
+    /// channels by these exact strings.
     var label: String { ["MEM", "SSD", "PWR", "GPU", "CPU"][rawValue] }
-    var name: String { ["Memory", "Storage", "Power", "GPU", "CPU"][rawValue] }
+    var name: String {
+        switch self {
+        case .memory: return L("channel.memory", "Memory")
+        case .ssd:    return L("channel.storage", "Storage")
+        case .power:  return L("channel.power", "Power")
+        case .gpu:    return "GPU"
+        case .cpu:    return "CPU"
+        }
+    }
 }
 
 /// One channel's reading, expressed twice: `band` is which tier it has entered, `fill` how far
@@ -75,6 +93,10 @@ struct Snapshot {
     // Power (W)
     var cpuPower = 0.0, gpuPower = 0.0, anePower = 0.0, ramPower = 0.0, sysPower = 0.0
     var allPower: Double { cpuPower + gpuPower + anePower }
+    /// The four rails the silicon card draws, summed. `allPower` omits DRAM and is part of the
+    /// `--json` surface, so it is left alone; but the figure printed beside the rail legend has to
+    /// equal the four bars underneath it or the card contradicts itself in front of the reader.
+    var railPower: Double { cpuPower + gpuPower + anePower + ramPower }
     // Thermals (°C)
     var cpuTemp = 0.0, cpuTempMax = 0.0, gpuTemp = 0.0, ssdTemp = 0.0, batteryTemp = 0.0
     var sensors: [Sensor] = []
@@ -165,15 +187,34 @@ struct Snapshot {
 }
 
 extension Array where Element == ChannelHealth {
-    /// What the wing says, in words. The gauge encodes state as colour and feather length, so
-    /// without this VoiceOver reaches the most important element in the interface and finds
-    /// nothing there.
+    /// Channels that have left calm, worst first.
+    private var notable: [ChannelHealth] {
+        filter { $0.band != .calm }.sorted { $0.band > $1.band }
+    }
+
+    /// What the wing says, on screen, in one line.
+    ///
+    /// The mark encodes all five channels as colour and feather length, which is exact and
+    /// silent: someone opening the panel for the first time sees five grey bars and no statement
+    /// of what they mean. This is that statement, and it is the first thing under the wordmark.
+    var headline: String {
+        guard let worst = notable.first else { return L("verdict.calm", "All five channels calm") }
+        let one = String(format: L("verdict.one", "%1$@ %2$@ · %3$d%% to its limit"),
+                         worst.channel.name, worst.band.word, Int((worst.fill * 100).rounded()))
+        guard notable.count > 1 else { return one }
+        return one + String(format: L("verdict.more", " · +%d more"), notable.count - 1)
+    }
+
+    /// The same reading for VoiceOver, at length. Sentence shape is table data rather than string
+    /// interpolation — the joiner and the closing clause are entries of their own — because
+    /// English punctuation baked into the concatenation produces Chinese that does not parse.
     var spoken: String {
-        let notable = filter { $0.band != .calm }
-            .sorted { $0.band > $1.band }
-        guard !notable.isEmpty else { return "All five channels calm." }
-        let list = notable.map { "\($0.channel.name) \($0.band.word), \(Int(($0.fill * 100).rounded())) percent of the way to its limit" }
-        return list.joined(separator: ". ") + ". The rest calm."
+        guard !notable.isEmpty else { return L("a11y.allCalm", "All five channels calm.") }
+        let list = notable.map {
+            String(format: L("a11y.channel", "%1$@ %2$@, %3$d percent of the way to its limit"),
+                   $0.channel.name, $0.band.word, Int(($0.fill * 100).rounded()))
+        }
+        return list.joined(separator: L("a11y.joiner", ". ")) + L("a11y.restCalm", ". The rest calm.")
     }
 }
 

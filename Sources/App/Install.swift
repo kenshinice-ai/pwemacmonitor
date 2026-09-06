@@ -36,12 +36,12 @@ enum Install {
         defaults.set(true, forKey: promptedKey)
 
         let alert = NSAlert()
-        alert.messageText = "Move PWE MAC MONITOR to your Applications folder?"
+        alert.messageText = L("install.title", "Move PWE MAC MONITOR to your Applications folder?")
         alert.informativeText = isOnReadOnlyVolume
-            ? "The app is running from a disk image. Moving it to Applications lets it stay installed, update itself, and start at login."
-            : "Keeping it in Applications lets it start at login and keeps it out of your Downloads folder."
-        alert.addButton(withTitle: "Move to Applications")
-        alert.addButton(withTitle: "Not Now")
+            ? L("install.fromDisk", "The app is running from a disk image. Moving it to Applications lets it stay installed, update itself, and start at login.")
+            : L("install.fromElsewhere", "Keeping it in Applications lets it start at login and keeps it out of your Downloads folder.")
+        alert.addButton(withTitle: L("install.move", "Move to Applications"))
+        alert.addButton(withTitle: L("install.notNow", "Not Now"))
         alert.alertStyle = .informational
         NSApp.activate(ignoringOtherApps: true)
         guard alert.runModal() == .alertFirstButtonReturn else { return }
@@ -50,8 +50,9 @@ enum Install {
             try moveToApplications()
         } catch {
             let failure = NSAlert()
-            failure.messageText = "Could not move the app"
-            failure.informativeText = "\(error.localizedDescription)\n\nDrag PWE MAC MONITOR to your Applications folder in Finder instead."
+            failure.messageText = L("install.failed", "Could not move the app")
+            failure.informativeText = error.localizedDescription + "\n\n"
+                + L("install.dragInstead", "Drag PWE MAC MONITOR to your Applications folder in Finder instead.")
             failure.runModal()
         }
     }

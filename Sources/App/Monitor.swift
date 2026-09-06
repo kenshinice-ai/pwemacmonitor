@@ -8,9 +8,23 @@ enum MenuBarMode: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var label: String {
         switch self {
-        case .icon: return "Wing only"
-        case .compact: return "Power + temperature"
-        case .full: return "CPU + power + temperature"
+        case .icon: return L("menubar.icon", "Wing only")
+        case .compact: return L("menubar.compact", "Power + temperature")
+        case .full: return L("menubar.full", "CPU + power + temperature")
+        }
+    }
+}
+
+/// The two conditions worth putting a banner on the panel for. Held as a case rather than as a
+/// finished sentence so that switching language re-renders the text that is already on screen.
+enum AppError {
+    case noAppleSilicon, launchAtLogin
+    var message: String {
+        switch self {
+        case .noAppleSilicon:
+            return L("error.hardware", "Hardware sources unavailable — PWE MAC MONITOR needs an Apple Silicon Mac.")
+        case .launchAtLogin:
+            return L("error.login", "Could not set launch at login — move the app to /Applications and try again.")
         }
     }
 }
@@ -41,12 +55,15 @@ final class Monitor: ObservableObject {
     private(set) var sensorList: [Sensor] = []
     private(set) var history: [String: [Double]] = ["cpu": [], "gpu": [], "power": [], "temp": [], "mem": []]
     @Published private(set) var revision = 0
-    @Published private(set) var error: String?
+    @Published private(set) var error: AppError?
 
     @Published var interval: Double { didSet { defaults.set(interval, forKey: "interval"); restart() } }
     @Published var menuBarMode: MenuBarMode { didSet { defaults.set(menuBarMode.rawValue, forKey: "menuBarMode"); onUpdate?() } }
     @Published var showSensors: Bool { didSet { defaults.set(showSensors, forKey: "showSensors"); syncSensorPanel(); bump() } }
     @Published var launchAtLogin: Bool { didSet { applyLaunchAtLogin() } }
+    @Published var language: Language {
+        didSet { defaults.set(language.rawValue, forKey: "language"); Loc.language = language; onUpdate?(); bump() }
+    }
 
     /// Set by the app delegate when the popover opens or closes.
     var isOpen = false {
@@ -80,9 +97,15 @@ final class Monitor: ObservableObject {
         menuBarMode = MenuBarMode(rawValue: defaults.string(forKey: "menuBarMode") ?? "") ?? .full
         showSensors = defaults.bool(forKey: "showSensors")
         launchAtLogin = SMAppService.mainApp.status == .enabled
+        // Through a local: the compiler will not let `Loc` read back `self.language` until every
+        // stored property is up, and the string tables have to be pointed at the right language
+        // before anything below builds a label out of them.
+        let lang = Language(rawValue: defaults.string(forKey: "language") ?? "") ?? .system
+        language = lang
+        Loc.language = lang
         sampler = Sampler()
         soc = sampler?.soc
-        if sampler == nil { error = "Hardware sources unavailable — PWE MAC MONITOR needs an Apple Silicon Mac." }
+        if sampler == nil { error = .noAppleSilicon }
         restart()
     }
 
@@ -174,7 +197,7 @@ final class Monitor: ObservableObject {
             // Most often this is an app running from a location LaunchServices will not register,
             // such as iCloud Drive or a quarantined download.
             launchAtLogin = SMAppService.mainApp.status == .enabled
-            self.error = "Could not set launch at login — move the app to /Applications and try again."
+            self.error = .launchAtLogin
         }
     }
 }

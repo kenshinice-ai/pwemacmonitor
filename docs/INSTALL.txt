@@ -1,6 +1,12 @@
 PWE MAC MONITOR
 A PARADISE PRODUCTION · 天域文创出品
 
+The app is in English and 简体中文. It follows your Mac; Language in the settings menu
+overrides that.
+本 App 支持 English 与简体中文,默认跟随系统,设置菜单里的「语言」可以覆盖。
+
+════════════════════════════════════════════════════════════════════════ ENGLISH ══
+
 INSTALLING
 1. Drag "PWE MAC MONITOR" onto the Applications folder in this window.
 2. Open it from Applications. It has no window — look for the wing mark in your menu bar,
@@ -23,5 +29,29 @@ macOS 14 (Sonoma) or later, on an Apple Silicon Mac (M1 or newer).
 Intel Macs are not supported: the power and per-core data comes from Apple Silicon counters
 that do not exist on Intel hardware.
 
-Source code, issues and newer versions:
+═══════════════════════════════════════════════════════════════════════ 简体中文 ══
+
+安装
+1. 把本窗口里的「PWE MAC MONITOR」拖到「应用程序」文件夹上。
+2. 从「应用程序」里打开它。它没有窗口 —— 请在屏幕右上角的菜单栏里找那个羽翼标记。
+3. 左键点羽翼打开面板,右键打开设置。
+
+安全性
+本 App 使用 Developer ID 证书签名并已通过 Apple 公证,可以直接打开 ——
+不会出现需要点掉的警告,也不需要去「系统设置」里放行。
+如果 macOS 对某个副本发出了警告,那个副本不是我们发出的。
+
+更新
+先从菜单栏退出正在运行的版本,再把新版本拖进去。
+或者用 Homebrew 安装,它会替你处理这一步:
+   brew install --cask kenshinice-ai/tap/pwe-mac-monitor
+   brew upgrade --cask kenshinice-ai/tap/pwe-mac-monitor
+
+系统要求
+macOS 14(Sonoma)或更高,Apple 芯片 Mac(M1 及以后)。
+不支持 Intel Mac:功耗和逐核数据来自 Apple 芯片上的性能计数器,Intel 硬件上不存在。
+
+═══════════════════════════════════════════════════════════════════════════════════
+
+Source code, issues and newer versions · 源码、问题反馈与新版本:
 https://github.com/kenshinice-ai/pwemacmonitor

@@ -58,10 +58,20 @@ if [[ ! -f build/AppIcon.icns || Sources/App/BrandMark.swift -nt build/AppIcon.i
   cp "$WORK/icon_1024.png" build/icon_1024.png
 fi
 
+echo "▸ strings"
+# en.lproj is generated from the English written at each L(...) call site; zh-Hans.lproj is the
+# only hand-maintained table. Fails the build on a key that is used but not translated, so a
+# half-translated panel cannot ship.
+swiftc -O Tools/loccheck/main.swift -o "$WORK/loccheck"
+"$WORK/loccheck" .
+
 echo "▸ resources"
 # ditto --norsrc --noextattr strips the metadata at copy time rather than after the fact.
 ditto --norsrc --noextattr --noacl build/AppIcon.icns "$RES/AppIcon.icns"
 ditto --norsrc --noextattr --noacl Resources/Fonts "$RES/Fonts"   # ATSApplicationFontsPath
+for lproj in Resources/*.lproj; do
+  ditto --norsrc --noextattr --noacl "$lproj" "$RES/$(basename "$lproj")"
+done
 ditto --norsrc --noextattr --noacl Resources/Info.plist "$APP/Contents/Info.plist"
 ditto --norsrc --noextattr --noacl THIRD-PARTY-NOTICES.md "$RES/THIRD-PARTY-NOTICES.md"
 ditto --norsrc --noextattr --noacl LICENSE "$RES/LICENSE"
@@ -96,7 +106,7 @@ if [[ "${1:-}" == "--dmg" ]]; then
   rm -rf "$STAGE" "$DMG"; mkdir -p "$STAGE"
   ditto "$APP" "$STAGE/$APP_NAME.app"
   ln -s /Applications "$STAGE/Applications"
-  ditto --norsrc --noextattr --noacl docs/INSTALL.txt "$STAGE/Read Me First.txt"
+  ditto --norsrc --noextattr --noacl docs/INSTALL.txt "$STAGE/Read Me First 请先阅读.txt"
   hdiutil create -volname "$APP_NAME" -srcfolder "$STAGE" -ov -format UDZO -quiet "$WORK/out.dmg"
   rm -rf "$STAGE"
   ditto "$WORK/out.dmg" "$DMG"

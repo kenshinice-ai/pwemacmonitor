@@ -219,7 +219,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func buildMenu(includeOpen: Bool) -> NSMenu {
         let menu = NSMenu()
         if includeOpen {
-            let open = menu.addItem(withTitle: "Open Dashboard", action: #selector(openFromMenu), keyEquivalent: "")
+            let open = menu.addItem(withTitle: L("menu.open", "Open Dashboard"), action: #selector(openFromMenu), keyEquivalent: "")
             open.target = self
             menu.addItem(.separator())
         }
@@ -231,36 +231,54 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             it.state = monitor.menuBarMode == m ? .on : .off
             it.target = self
         }
-        menu.setSubmenu(modes, for: menu.addItem(withTitle: "Menu Bar Style", action: nil, keyEquivalent: ""))
+        menu.setSubmenu(modes, for: menu.addItem(withTitle: L("menu.style", "Menu Bar Style"), action: nil, keyEquivalent: ""))
 
         let intervals = NSMenu()
         for v in [1.0, 2.0, 3.0, 5.0] {
-            let it = intervals.addItem(withTitle: "\(Int(v)) second\(v == 1 ? "" : "s")",
-                                       action: #selector(setInterval(_:)), keyEquivalent: "")
+            let title = v == 1 ? L("menu.interval.one", "1 second")
+                               : String(format: L("menu.interval.many", "%d seconds"), Int(v))
+            let it = intervals.addItem(withTitle: title, action: #selector(setInterval(_:)), keyEquivalent: "")
             it.representedObject = v
             it.state = monitor.interval == v ? .on : .off
             it.target = self
         }
-        menu.setSubmenu(intervals, for: menu.addItem(withTitle: "Refresh Every", action: nil, keyEquivalent: ""))
+        menu.setSubmenu(intervals, for: menu.addItem(withTitle: L("menu.refresh", "Refresh Every"), action: nil, keyEquivalent: ""))
+
+        let languages = NSMenu()
+        for l in Language.allCases {
+            let it = languages.addItem(withTitle: l.label, action: #selector(setLanguage(_:)), keyEquivalent: "")
+            it.representedObject = l.rawValue
+            it.state = monitor.language == l ? .on : .off
+            it.target = self
+        }
+        menu.setSubmenu(languages, for: menu.addItem(withTitle: L("menu.language", "Language"), action: nil, keyEquivalent: ""))
 
         menu.addItem(.separator())
-        let sensors = menu.addItem(withTitle: "Show All Sensors", action: #selector(toggleSensors), keyEquivalent: "")
+        let sensors = menu.addItem(withTitle: L("menu.sensors", "Show All Sensors"), action: #selector(toggleSensors), keyEquivalent: "")
         sensors.state = monitor.showSensors ? .on : .off
         sensors.target = self
-        let login = menu.addItem(withTitle: "Launch at Login", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
+        let login = menu.addItem(withTitle: L("menu.login", "Launch at Login"), action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
         login.state = monitor.launchAtLogin ? .on : .off
         login.target = self
 
         menu.addItem(.separator())
-        let updates = menu.addItem(withTitle: "Check for Updates…", action: #selector(openReleases), keyEquivalent: "")
+        // Seeing which process is pegging a core is half the job; the other half is going and
+        // dealing with it, and this app deliberately cannot kill anything.
+        let activity = menu.addItem(withTitle: L("menu.activity", "Open Activity Monitor"), action: #selector(openActivityMonitor), keyEquivalent: "")
+        activity.target = self
+        let copy = menu.addItem(withTitle: L("menu.copy", "Copy Diagnostics"), action: #selector(copyDiagnostics), keyEquivalent: "")
+        copy.target = self
+
+        menu.addItem(.separator())
+        let updates = menu.addItem(withTitle: L("menu.updates", "Check for Updates…"), action: #selector(openReleases), keyEquivalent: "")
         updates.target = self
-        let source = menu.addItem(withTitle: "Source Code on GitHub", action: #selector(openRepository), keyEquivalent: "")
+        let source = menu.addItem(withTitle: L("menu.source", "Source Code on GitHub"), action: #selector(openRepository), keyEquivalent: "")
         source.target = self
-        let version = menu.addItem(withTitle: "Version \(Install.version)", action: nil, keyEquivalent: "")
+        let version = menu.addItem(withTitle: String(format: L("menu.version", "Version %@"), Install.version), action: nil, keyEquivalent: "")
         version.isEnabled = false
 
         menu.addItem(.separator())
-        let quit = menu.addItem(withTitle: "Quit PWE MAC MONITOR", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        let quit = menu.addItem(withTitle: L("menu.quit", "Quit PWE MAC MONITOR"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         quit.target = NSApp
         return menu
     }
@@ -275,6 +293,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
     @objc private func setInterval(_ item: NSMenuItem) {
         if let v = item.representedObject as? Double { monitor.interval = v }
+    }
+    @objc private func setLanguage(_ item: NSMenuItem) {
+        if let r = item.representedObject as? String, let l = Language(rawValue: r) { monitor.language = l }
+    }
+    @objc private func openActivityMonitor() {
+        NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: "/System/Applications/Utilities/Activity Monitor.app"),
+                                           configuration: NSWorkspace.OpenConfiguration())
+    }
+    /// Deliberately the `--probe` text, in English, whatever the interface language: it goes into
+    /// a bug report or a message to us, and a reading is easier to act on in the form the CLI and
+    /// the JSON already use.
+    @objc private func copyDiagnostics() {
+        guard let soc = monitor.soc else { return }
+        let text = "PWE MAC MONITOR \(Install.version) · macOS \(ProcessInfo.processInfo.operatingSystemVersionString)\n"
+            + CLI.summary(monitor.snap, soc: soc)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
     }
 
     func popoverDidClose(_ notification: Notification) { monitor.isOpen = false }

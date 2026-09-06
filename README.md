@@ -12,9 +12,13 @@ One self-contained app — no Homebrew, no helper processes, no runtime to insta
 
 *A PARADISE PRODUCTION · 天域文创出品*
 
+**English** · [简体中文](README.zh-Hans.md)
+
 <img src="docs/menubar-full-dark.png" alt="Menu bar readout" width="240">
 
 <img src="docs/dashboard-dark.png" alt="Dashboard, dark" width="330"> <img src="docs/dashboard-light.png" alt="Dashboard, light" width="330">
+
+<sub>English and 简体中文, following the Mac or set in the app.</sub>
 
 </div>
 
@@ -38,6 +42,22 @@ Two of these are worth calling out, because most menu-bar monitors do not have t
 - **Per-core residency.** Each bar is one physical core, frequency-weighted, with the efficiency and
   performance clusters distinguished. Hover a bar for its exact frequency.
 
+## The verdict, in one line
+
+The mark states all five channels exactly, and says nothing. Under the wordmark is the sentence
+that goes with it — *All five channels calm*, or *Memory warm · 81% to its limit · +1 more* —
+which is also what VoiceOver reads when it reaches the mark. It is the only line in the panel
+that is coloured while everything else is quiet, because colour here means *look at this*.
+
+## Language
+
+English and 简体中文. The app follows your Mac by default; **Language** in the settings menu
+overrides it, which matters because a great many Chinese speakers run macOS in English on purpose.
+
+Five things stay in English in both: the wordmark, the five channel keys `MEM SSD PWR GPU CPU`,
+the power rails `CPU GPU ANE DRAM`, units, and everything `--probe` and `--json` print — that last
+one is a machine interface, and translating it would break every script reading it.
+
 ## Menu bar
 
 Left-click opens the dashboard. Right-click opens settings.
@@ -47,6 +67,12 @@ Left-click opens the dashboard. Right-click opens settings.
 | <img src="docs/menubar-icon-dark.png" width="90"> | **Wing only** — the mark itself is the gauge |
 | <img src="docs/menubar-compact-dark.png" width="150"> | **Power + temperature** |
 | <img src="docs/menubar-full-dark.png" width="200"> | **CPU + power + temperature** |
+
+The settings menu also carries **Refresh Every** (1–5 s), **Show All Sensors** (the ~200-key PMU
+dump), **Launch at Login**, **Language**, **Open Activity Monitor** — seeing which process is
+pegging a core is half the job, and this app deliberately cannot kill anything — and **Copy
+Diagnostics**, which puts the `--probe` reading plus the version and OS build on the clipboard for
+a bug report.
 
 ### The mark is the gauge
 
@@ -59,6 +85,8 @@ In the menu bar the wing carries one colour, not five: at 22 pt a feather is abo
 and five tints there turn into a smear. Whole-mark colour answers the only question a menu bar can
 answer — is anything wrong — and the panel answers the rest. [The full design record, including
 the prototype that settled it, is in `docs/wing-states.md`](docs/wing-states.md).
+[How the two languages
+work, and the three traps that produced bugs, is in `docs/localisation.md`](docs/localisation.md).
 
 When nothing is wrong the mark is drawn solid, exactly as the brand standard draws it.
 
@@ -263,11 +291,20 @@ window is 89 samples — the integer approximation of φ that the wing's own arm
 ```bash
 "build/PWE MAC MONITOR.app/Contents/MacOS/pwemon" --snapshot docs          # render the UI to PNG
 "build/PWE MAC MONITOR.app/Contents/MacOS/pwemon" --popover-test           # popover sizing check
+swiftc -O Sources/Core/*.swift Tools/thresholds/main.swift -o /tmp/t && /tmp/t   # threshold sweep
+swiftc -O Tools/loccheck/main.swift -o /tmp/l && /tmp/l .                   # string tables
 ```
+
+`loccheck` runs as part of `build.sh`. English lives at each `L("key", "English")` call site, so
+`Resources/en.lproj` is generated from the source and `Resources/zh-Hans.lproj` is the only table
+maintained by hand; the build fails on a key that is used but not translated, or translated but no
+longer used. There is no Xcode project here to run `genstrings`, and a missing key surfaces as one
+English row inside an otherwise Chinese panel — the kind of defect that survives a demo and ships.
 
 `--snapshot` renders the dashboard and every menu-bar style in both appearances without needing
 screen-recording permission, and reports the popover height from the first layout pass against the
-settled one. `--popover-test` opens a real `NSPopover` off-screen and prints its height over time —
+settled one. Append `-language en` or `-language zh-Hans` (the `UserDefaults` argument domain) to
+render either language without changing your own setting. `--popover-test` opens a real `NSPopover` off-screen and prints its height over time —
 a single stable number is a pass. Add `--demo` to substitute placeholder process names and IP
 address when producing images for documentation.
 

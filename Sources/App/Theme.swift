@@ -46,8 +46,14 @@ enum Theme {
     }
 
     /// Fill colour for a bar or gauge track. Calm fills stay quiet rather than disappearing.
+    ///
+    /// The two opacities are not the same number because the two grounds are not equally kind to
+    /// them: navy ink at 34 % on white measured 2.17:1, against 3.73:1 for paper at 42 % on the
+    /// dark card — the light theme was showing its calm readings at half the contrast of the dark
+    /// one. 46 % brings it to 3.04:1, over the 3:1 floor for a graphical object that carries
+    /// meaning, which the filled part of a bar does.
     static func healthFill(_ h: Health, dark: Bool) -> Color {
-        h == .calm ? ink(dark).opacity(dark ? 0.42 : 0.34) : health(h, dark: dark)
+        h == .calm ? ink(dark).opacity(dark ? 0.42 : 0.46) : health(h, dark: dark)
     }
 
     /// Series colours for composition bars (core clusters, memory segments, power rails).
@@ -92,6 +98,15 @@ enum Theme {
         ])
         return Font(NSFont(descriptor: desc, size: size) ?? base)
     }
+    /// Small-caps section label, and the one place the identity standard needs a second exception.
+    ///
+    /// Standard §6 sets Inter Semibold at +0.18em tracking, which is a rule about Latin small
+    /// caps: Han has no small caps, and letterspacing it at that ratio reads as a defect rather
+    /// than as emphasis. 8.5 pt is also a size below what Apple ships as "mini", tolerable for
+    /// Latin caps and not for PingFang. Recorded as §7.2 衍生字体例外.
+    static func label(_ size: CGFloat = 8.5) -> Font { ui(Loc.isCJK ? size + 1 : size, 600) }
+    static func labelTracking(_ t: CGFloat) -> CGFloat { Loc.isCJK ? t * 0.4 : t }
+
     static func nsNumber(_ size: CGFloat, _ weight: CGFloat = 500) -> NSFont {
         let base = variable("Inter", size: size, weight: weight, fallback: .monospacedDigitSystemFont(ofSize: size, weight: .medium))
         let desc = base.fontDescriptor.addingAttributes([
@@ -125,6 +140,14 @@ enum Fmt {
     static func rate(_ bps: Double) -> String { bytes(bps) + "/s" }
     static func uptime(_ t: TimeInterval) -> String {
         let d = Int(t) / 86400, h = (Int(t) % 86400) / 3600, m = (Int(t) % 3600) / 60
-        return d > 0 ? "\(d)d \(h)h" : h > 0 ? "\(h)h \(m)m" : "\(m)m"
+        if d > 0 { return String(format: L("fmt.uptime.dh", "%1$dd %2$dh"), d, h) }
+        if h > 0 { return String(format: L("fmt.uptime.hm", "%1$dh %2$dm"), h, m) }
+        return String(format: L("fmt.uptime.m", "%dm"), m)
+    }
+    /// The sparkline window, stated on the card rather than only in a tooltip — it moves with the
+    /// refresh interval, so it is not something the reader can learn once.
+    static func window(_ seconds: Double) -> String {
+        seconds < 90 ? String(format: L("fmt.window.sec", "last %ds"), Int(seconds.rounded()))
+                     : String(format: L("fmt.window.min", "last %d min"), Int((seconds / 60).rounded()))
     }
 }

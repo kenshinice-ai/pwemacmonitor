@@ -33,7 +33,7 @@ struct DashboardView: View {
             Divider().overlay(Theme.stroke(dark))
             ScrollView(.vertical) {
                 VStack(alignment: .leading, spacing: Theme.s3) {
-                    if let e = monitor.error { banner(e) }
+                    if let e = monitor.error { banner(e.message) }
                     hero
                     silicon
                     // A Grid, not two VStacks side by side. Independent columns take each card
@@ -42,10 +42,14 @@ struct DashboardView: View {
                     // the third, with the shortfall left as a hole under the left column. Pairing
                     // the cards into rows makes every horizontal edge line up and costs no height:
                     // the taller column already set the section's height.
+                    // Paired by meaning: what the chip is doing, how the machine is answering,
+                    // what is moving in and out. This buys no height and was measured rather than
+                    // assumed — a GridRow takes its taller card, the four run 74 / 88 / 89 / 106 pt,
+                    // and no pairing beats 106 + 89. The old order was already at that bound.
                     Grid(horizontalSpacing: Theme.s3, verticalSpacing: Theme.s3) {
                         GridRow { thermalCard; memory }
-                        GridRow { fans; storage }
-                        GridRow { battery; network }
+                        GridRow { fans; battery }
+                        GridRow { storage; network }
                     }
                     processes
                     if monitor.showSensors { sensors }
@@ -79,18 +83,24 @@ struct DashboardView: View {
     private var hero: some View {
         Card(dark: dark) {
             HStack(alignment: .top, spacing: 0) {
-                heroStat("CPU", Fmt.pct(s.cpuUsage), Fmt.ghz(s.pcpuFreq), Fmt.temp(s.cpuTempMax), s.cpuTempMaxHealth,
+            heroStat("CPU", Fmt.pct(s.cpuUsage), Fmt.ghz(s.pcpuFreq), Fmt.temp(s.cpuTempMax), s.cpuTempMaxHealth,
                          busy(s.cpuLoadHealth), monitor.history["cpu"] ?? [], ceiling: 1)
                 rule
-                heroStat("GPU", Fmt.pct(s.gpuUsage), s.gpuFreq > 0 ? "\(s.gpuFreq) MHz" : "idle",
+                heroStat("GPU", Fmt.pct(s.gpuUsage), s.gpuFreq > 0 ? "\(s.gpuFreq) MHz" : L("value.idle", "idle"),
                          s.gpuTemp > 0 ? Fmt.temp(s.gpuTemp) : nil, s.gpuTempHealth,
                          busy(s.gpuLoadHealth), monitor.history["gpu"] ?? [], ceiling: 1)
                 rule
-                heroStat("POWER", Fmt.watts(s.sysPower), "chip \(Fmt.watts(s.allPower))", nil, .calm,
-                         monitor.powerHealth, monitor.history["power"] ?? [], ceiling: nil)
+                // The second figure is `railPower`, not `allPower`: the four bars in the card
+                // directly below add up to exactly this number, and a reader who checks is
+                // entitled to find that they do. `allPower` omits DRAM and stays the JSON's.
+                heroStat(L("hero.power", "POWER"), Fmt.watts(s.sysPower),
+                         String(format: L("hero.rails", "rails %@"), Fmt.watts(s.railPower)), nil, .calm,
+                         monitor.powerHealth, monitor.history["power"] ?? [], ceiling: nil,
+                         help: L("hero.powerHelp", "The system rail. 'rails' is the four compute rails below it — the rest is display, ports and everything else in the machine."))
             }
         }
     }
+
     /// Load is not a fault. A GPU at 100 % is doing what it was asked to do, and painting that
     /// coral put a harder verdict on the screen than the wing gave the same subsystem two inches
     /// above — coral there means a limit has been crossed. Busy tops out at warm; coral stays with
@@ -100,7 +110,7 @@ struct DashboardView: View {
     private var rule: some View { Rectangle().fill(Theme.stroke(dark)).frame(width: 1, height: 66).padding(.horizontal, Theme.s3) }
 
     private func heroStat(_ title: String, _ value: String, _ sub: String, _ temp: String?, _ tempHealth: Health,
-                          _ h: Health, _ series: [Double], ceiling: Double?) -> some View {
+                          _ h: Health, _ series: [Double], ceiling: Double?, help: String? = nil) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             SectionLabel(title, dark: dark, ruled: false)
             Text(value).font(Theme.number(21, 600)).foregroundStyle(Theme.health(h, dark: dark))
@@ -114,24 +124,22 @@ struct DashboardView: View {
             }
             .lineLimit(1).minimumScaleFactor(0.7)
             Sparkline(values: series, ceiling: ceiling, color: Theme.healthFill(h, dark: dark)).frame(height: 21).padding(.top, 2)
-                .help(series.count < Sparkline.minimumSamples
-                      ? "Building history — \(series.count) of \(Sparkline.minimumSamples) samples needed before the trend means anything"
-                      : "Last \(Theme.historyLength) samples · \(Int(Double(Theme.historyLength) * monitor.interval / 60)) min at \(Int(monitor.interval))s")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .help(help ?? "")
     }
 
     // MARK: Thermals
     private var thermalCard: some View {
-        Card(dark: dark, title: "THERMALS", fills: true) {
+        Card(dark: dark, title: L("card.thermals", "THERMALS"), fills: true) {
             VStack(spacing: 7) {
-                gauge("CPU avg", s.cpuTemp, s.cpuTempHealth, hot: 92)
-                gauge("CPU max", s.cpuTempMax, s.cpuTempMaxHealth, hot: 92)
+                gauge(L("row.cpuAvg", "CPU avg"), s.cpuTemp, s.cpuTempHealth, hot: 92)
+                gauge(L("row.cpuMax", "CPU max"), s.cpuTempMax, s.cpuTempMaxHealth, hot: 92)
                 gauge("GPU", s.gpuTemp, s.gpuTempHealth, hot: 92)
                 gauge("SSD", s.ssdTemp, s.ssdTempHealth, hot: 68)
                 // Graded on its own reading, not on `batteryHealth`: that one folds in charge
                 // level, so a nearly flat battery used to turn this temperature row red.
-                gauge("Battery", s.batteryTemp, Health.grade(s.batteryTemp, warm: 38, hot: 42), hot: 42)
+                gauge(L("row.battery", "Battery"), s.batteryTemp, Health.grade(s.batteryTemp, warm: 38, hot: 42), hot: 42)
             }
         }
     }
@@ -155,17 +163,19 @@ struct DashboardView: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(name)
-        .accessibilityValue(v > 0 ? "\(Fmt.temp1(v)), \(h.word)" : "no reading")
-        .help(v > 0 ? "\(Fmt.temp1(v)) · \(h.word) · throttles at \(Int(hot)) °C · bar spans 20–100 °C"
-                    : "no reading from this sensor")
+        .accessibilityValue(v > 0 ? String(format: L("a11y.reading", "%1$@, %2$@"), Fmt.temp1(v), h.word)
+                                  : L("value.noReading", "no reading"))
+        .help(v > 0 ? String(format: L("help.gauge", "%1$@ · %2$@ · throttles at %3$d °C · bar spans 20–100 °C"),
+                             Fmt.temp1(v), h.word, Int(hot))
+                    : L("help.noSensor", "no reading from this sensor"))
     }
 
     // MARK: Fans
     private var fans: some View {
         Group {
-            Card(dark: dark, title: "FANS", fills: true) {
+            Card(dark: dark, title: L("card.fans", "FANS"), fills: true) {
                 if s.fans.isEmpty {
-                    Text("Fanless design").font(Theme.ui(10)).foregroundStyle(Theme.muted(dark))
+                    Text(L("value.fanless", "Fanless design")).font(Theme.ui(10)).foregroundStyle(Theme.muted(dark))
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
                     VStack(spacing: 7) {
@@ -174,7 +184,7 @@ struct DashboardView: View {
                                 HStack(spacing: 4) {
                                     Text(f.id).font(Theme.ui(10)).foregroundStyle(Theme.muted(dark))
                                     Spacer(minLength: 0)
-                                    Text(f.rpm == 0 ? "idle" : "\(f.rpm) rpm").font(Theme.number(10, 600))
+                                    Text(f.rpm == 0 ? L("value.idle", "idle") : "\(f.rpm) rpm").font(Theme.number(10, 600))
                                 }
                                 Bar(value: f.ratio, color: Theme.healthFill(Health.grade(f.ratio, warm: 0.45, hot: 0.8), dark: dark), dark: dark)
                             }
@@ -188,19 +198,23 @@ struct DashboardView: View {
     // MARK: Battery
     private var battery: some View {
         Group {
-            Card(dark: dark, title: "BATTERY", fills: true) {
+            Card(dark: dark, title: L("card.battery", "BATTERY"), fills: true) {
                 let b = s.battery
                 if !b.present {
-                    Text("No battery").font(Theme.ui(10)).foregroundStyle(Theme.muted(dark))
+                    Text(L("value.noBattery", "No battery")).font(Theme.ui(10)).foregroundStyle(Theme.muted(dark))
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
                     VStack(spacing: 5) {
-                        Headline("\(b.percent)%", note: b.isCharging ? "charging" : b.externalPower ? "on power" : "on battery",
+                        Headline("\(b.percent)%",
+                                 note: b.isCharging ? L("value.charging", "charging")
+                                     : b.externalPower ? L("value.onPower", "on power") : L("value.onBattery", "on battery"),
                                  color: Theme.health(s.batteryHealth, dark: dark), dark: dark)
                         Bar(value: Double(b.percent) / 100, color: Theme.healthFill(s.batteryHealth, dark: dark), dark: dark)
-                        kv("Flow", String(format: "%+.1f W", b.watts))
-                        kv("Health", String(format: "%.0f%% · %d cycles", b.health * 100, b.cycles))
-                        if let m = b.timeRemainingMin { kv("Remaining", "\(m / 60)h \(m % 60)m") }
+                        kv(L("row.flow", "Flow"), String(format: "%+.1f W", b.watts))
+                        kv(L("row.health", "Health"), String(format: L("value.cycles", "%1$.0f%% · %2$d cycles"), b.health * 100, b.cycles))
+                        if let m = b.timeRemainingMin {
+                            kv(L("row.remaining", "Remaining"), String(format: L("value.hm", "%1$dh %2$dm"), m / 60, m % 60))
+                        }
                     }
                 }
             }
@@ -209,21 +223,23 @@ struct DashboardView: View {
 
     // MARK: Memory
     private var memory: some View {
-        Card(dark: dark, title: "MEMORY", fills: true) {
+        Card(dark: dark, title: L("card.memory", "MEMORY"), fills: true) {
             let m = s.memory
             VStack(spacing: 5) {
-                Headline(Fmt.gib(m.used), note: "of \(Fmt.gib(m.total))",
+                Headline(Fmt.gib(m.used), note: String(format: L("value.of", "of %@"), Fmt.gib(m.total)),
                          color: Theme.health(s.memoryHealth, dark: dark), dark: dark)
                 StackedBar(parts: [(Double(m.app), Theme.seriesPrimary(dark)),
                                    (Double(m.wired), Theme.series(0, dark)),
                                    (Double(m.compressed), Theme.series(1, dark))],
                            total: Double(m.total), dark: dark)
-                kv("App", Fmt.gib(m.app), swatch: Theme.seriesPrimary(dark))
-                kv("Wired", Fmt.gib(m.wired), swatch: Theme.series(0, dark))
-                kv("Compressed", Fmt.gib(m.compressed), swatch: Theme.series(1, dark))
-                kv("Cached", Fmt.gib(m.cached))
-                kv("Swap", Fmt.gib(m.swapUsed))
-                kv("Pressure", m.pressure >= 75 ? "Normal" : m.pressure >= 45 ? "Elevated" : "Critical",
+                kv(L("row.app", "App"), Fmt.gib(m.app), swatch: Theme.seriesPrimary(dark))
+                kv(L("row.wired", "Wired"), Fmt.gib(m.wired), swatch: Theme.series(0, dark))
+                kv(L("row.compressed", "Compressed"), Fmt.gib(m.compressed), swatch: Theme.series(1, dark))
+                kv(L("row.cached", "Cached"), Fmt.gib(m.cached))
+                kv(L("row.swap", "Swap"), Fmt.gib(m.swapUsed))
+                kv(L("row.pressure", "Pressure"),
+                   m.pressure >= 75 ? L("value.normal", "Normal")
+                                    : m.pressure >= 45 ? L("value.elevated", "Elevated") : L("value.critical", "Critical"),
                    color: Theme.health(s.memoryHealth, dark: dark))
             }
         }
@@ -235,11 +251,12 @@ struct DashboardView: View {
             Card(dark: dark, title: s.disk.name.isEmpty ? "SSD" : "SSD · \(s.disk.name.uppercased())", fills: true) {
                 let d = s.disk
                 VStack(spacing: 5) {
-                    Headline(Fmt.bytes(Double(d.total - d.free)), note: "of \(Fmt.bytes(Double(d.total)))",
+                    Headline(Fmt.bytes(Double(d.total - d.free)),
+                             note: String(format: L("value.of", "of %@"), Fmt.bytes(Double(d.total))),
                              color: Theme.health(s.diskHealth, dark: dark), dark: dark)
                     Bar(value: d.usedRatio, color: Theme.healthFill(s.diskHealth, dark: dark), dark: dark)
-                    kv("Read", Fmt.rate(s.diskReadPerSec))
-                    kv("Write", Fmt.rate(s.diskWritePerSec))
+                    kv(L("row.read", "Read"), Fmt.rate(s.diskReadPerSec))
+                    kv(L("row.write", "Write"), Fmt.rate(s.diskWritePerSec))
                     // No Temp row: THERMALS already carries the SSD sensor, and printing one
                     // reading in two places is how the two quietly drift apart.
                 }
@@ -250,14 +267,14 @@ struct DashboardView: View {
     // MARK: Network
     private var network: some View {
         Group {
-            Card(dark: dark, title: s.network.primaryInterface.isEmpty ? "NETWORK"
-                                                                     : "NETWORK · \(s.network.primaryInterface.uppercased())",
+            Card(dark: dark, title: s.network.primaryInterface.isEmpty ? L("card.network", "NETWORK")
+                     : L("card.network", "NETWORK") + " · \(s.network.primaryInterface.uppercased())",
                  fills: true) {
                 VStack(spacing: 5) {
-                    kv("Down", Fmt.rate(s.netInPerSec))
-                    kv("Up", Fmt.rate(s.netOutPerSec))
-                    if !s.network.primaryAddress.isEmpty { kv("Address", s.network.primaryAddress) }
-                    kv("Load", String(format: "%.1f · %.1f · %.1f", s.loadAvg.0, s.loadAvg.1, s.loadAvg.2))
+                    kv(L("row.down", "Down"), Fmt.rate(s.netInPerSec))
+                    kv(L("row.up", "Up"), Fmt.rate(s.netOutPerSec))
+                    if !s.network.primaryAddress.isEmpty { kv(L("row.address", "Address"), s.network.primaryAddress) }
+                    kv(L("row.load", "Load"), String(format: "%.1f · %.1f · %.1f", s.loadAvg.0, s.loadAvg.1, s.loadAvg.2))
                 }
             }
         }
@@ -271,12 +288,22 @@ struct DashboardView: View {
             VStack(spacing: Theme.s2) {
                 HStack(alignment: .bottom, spacing: 3) {
                     if s.cores.isEmpty {
-                        Text("Waiting for the first interval…").font(Theme.ui(10)).foregroundStyle(Theme.muted(dark))
+                        Text(L("value.waiting", "Waiting for the first interval…")).font(Theme.ui(10)).foregroundStyle(Theme.muted(dark))
                             .frame(height: 28, alignment: .bottom)
                     } else {
-                        ForEach(s.cores) { c in
+                        ForEach(Array(s.cores.enumerated()), id: \.element.id) { i, c in
+                            // A gap where the cluster changes. E and P were told apart by fill
+                            // colour alone, which is the one thing a bar chart may not rely on —
+                            // and at idle, when most of the bars carry no fill at all, there was
+                            // nothing on screen dividing the two clusters. Space rather than a
+                            // rule: Theme.stroke is white at 7 % on the dark card, 1.22:1, and a
+                            // hairline there is not a boundary anyone can see.
+                            if i > 0, s.cores[i - 1].isP != c.isP {
+                                Color.clear.frame(width: 6, height: 28)
+                            }
                             CoreBar(ratio: c.scaled, color: c.isP ? Theme.seriesPrimary(dark) : Theme.seriesSecondary(dark), dark: dark)
-                                .help("\(c.isP ? p : e) core \(c.core_label) · \(Fmt.ghz(c.freqMHz)) · \(Fmt.pct(c.scaled))")
+                                .help(String(format: L("help.core", "%1$@ core %2$@ · %3$@ · %4$@"),
+                                             c.isP ? p : e, c.core_label, Fmt.ghz(c.freqMHz), Fmt.pct(c.scaled)))
                         }
                     }
                 }
@@ -310,6 +337,13 @@ struct DashboardView: View {
                     }
                     Spacer(minLength: 0)
                 }
+                // Say what these four watts are and are not. Without it the card shows a figure
+                // well under the system rail printed two inches above and leaves the reader to
+                // guess whether one of them is wrong.
+                Text(L("silicon.railNote", "compute rails only — the system figure also covers display and ports"))
+                    .font(Theme.ui(8)).foregroundStyle(Theme.muted(dark))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
@@ -324,7 +358,7 @@ struct DashboardView: View {
 
     // MARK: Processes — always six rows so the card height never changes between refreshes.
     private var processes: some View {
-        Card(dark: dark, title: "TOP PROCESSES") {
+        Card(dark: dark, title: L("card.processes", "TOP PROCESSES · % OF ONE CORE")) {
             VStack(spacing: 5) {
                 ForEach(0..<6, id: \.self) { i in
                     let p = i < s.processes.count ? s.processes[i] : nil
@@ -357,10 +391,10 @@ struct DashboardView: View {
     // MARK: All sensors
     @ViewBuilder private var sensors: some View {
         let list = monitor.sensorList
-        return Card(dark: dark, title: "ALL SENSORS · \(list.count)") {
+        return Card(dark: dark, title: String(format: L("card.sensors", "ALL SENSORS · %d"), list.count)) {
             let columns = [GridItem(.flexible(), spacing: Theme.s3), GridItem(.flexible(), spacing: 0)]
             if list.isEmpty {
-                Text("Reading…").font(Theme.ui(10)).foregroundStyle(Theme.muted(dark))
+                Text(L("value.reading", "Reading…")).font(Theme.ui(10)).foregroundStyle(Theme.muted(dark))
             } else {
                 // Two hundred–odd rows would dwarf the rest of the dashboard, so the dump scrolls
                 // inside its own card and the readings above it stay on screen.
@@ -403,6 +437,7 @@ struct DashboardView: View {
 private struct BrandHeader: View {
     @ObservedObject var monitor: Monitor
     let dark: Bool
+    private var worst: Health { monitor.channels.map(\.band).max() ?? .calm }
     var body: some View {
         let ch = monitor.channels
         VStack(alignment: .leading, spacing: Theme.s2) {
@@ -415,16 +450,25 @@ private struct BrandHeader: View {
                 WingGaugeView(channels: ch, dark: dark)
                     .frame(width: 55 * BrandMark.aspect, height: 55)   // Fibonacci; below this the innermost feather is too thin to hold a colour
                     .accessibilityElement()
-                    .accessibilityLabel("System state")
+                    .accessibilityLabel(L("a11y.systemState", "System state"))
                     .accessibilityValue(ch.spoken)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("PWE MAC MONITOR").font(Theme.serif(13, 500)).tracking(0.9)
-                    Text("\(monitor.soc?.chipName ?? "Apple Silicon") · \(monitor.soc?.memoryGB ?? 0) GB · up \(Fmt.uptime(monitor.snap.uptime))")
+                    Text("\(monitor.soc?.chipName ?? "Apple Silicon") · \(monitor.soc?.memoryGB ?? 0) GB · "
+                         + String(format: L("value.up", "up %@"), Fmt.uptime(monitor.snap.uptime)))
                         .font(Theme.ui(9)).tracking(0.2).foregroundStyle(Theme.muted(dark))
                 }
                 .padding(.bottom, Theme.s1)
                 Spacer(minLength: 0)
             }
+            // The mark states all five channels exactly, and says nothing. Someone opening this
+            // for the first time sees a wing and five grey bars with no statement of what they
+            // mean; the sentence VoiceOver has always been given belongs on the screen too.
+            // Muted while calm, because colour in this interface means "look at me".
+            Text(ch.headline)
+                .font(Theme.ui(9.5, 500))
+                .foregroundStyle(worst == .calm ? Theme.muted(dark) : Theme.health(worst, dark: dark))
+                .lineLimit(1).minimumScaleFactor(0.75)
             ChannelLegend(channels: ch, dark: dark)
         }
         .padding(.horizontal, Theme.s4).padding(.vertical, Theme.s3)
@@ -451,12 +495,13 @@ private struct ChannelLegend: View {
                                 .frame(width: max(2, g.size.width * c.fill))
                         }
                     }
-                    .frame(height: 2)
+                    .frame(height: 3)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(c.channel.name)
-                .accessibilityValue("\(c.band.word), \(Int((c.fill * 100).rounded())) percent of the way to its limit")
+                .accessibilityValue(String(format: L("a11y.band", "%1$@, %2$d percent of the way to its limit"),
+                                           c.band.word, Int((c.fill * 100).rounded())))
             }
         }
     }
@@ -465,9 +510,20 @@ private struct ChannelLegend: View {
 private struct ControlBar: View {
     @ObservedObject var monitor: Monitor
     let dark: Bool
+
+    /// Until the buffer is deep enough to draw, say so: the sparklines show a bare baseline at
+    /// that point, which reads as a broken chart rather than as a young one.
+    private var window: String {
+        let n = monitor.history["cpu"]?.count ?? 0
+        return n < Sparkline.minimumSamples
+            ? String(format: L("hero.building", "building %1$d/%2$d"), n, Sparkline.minimumSamples)
+            : Fmt.window(Double(Theme.historyLength) * monitor.interval)
+    }
+
     var body: some View {
         HStack(spacing: Theme.s2) {
-            Text("EVERY").font(Theme.ui(8.5, 600)).tracking(1.4).foregroundStyle(Theme.muted(dark))
+            Text(L("control.every", "EVERY")).font(Theme.label(8.5)).tracking(Theme.labelTracking(1.4))
+                .foregroundStyle(Theme.muted(dark))
             ForEach([1.0, 2.0, 3.0, 5.0], id: \.self) { v in
                 let on = monitor.interval == v
                 Button { monitor.interval = v } label: {
@@ -483,8 +539,15 @@ private struct ControlBar: View {
                 .buttonStyle(.plain)
                 .focusable(false)
                 .focusEffectDisabled()          // no system blue focus ring inside the popover
-                .help("Refresh every \(Int(v)) second\(v == 1 ? "" : "s")")
+                .help(v == 1 ? L("help.refresh.one", "Refresh every second")
+                             : String(format: L("help.refresh.many", "Refresh every %d seconds"), Int(v)))
             }
+            // What the three sparklines cover. It is 89 samples times whichever chip is lit, so
+            // it belongs beside the control that sets it rather than up on the chart — and here
+            // it costs no height, where a row of its own under the hero cost 15 pt.
+            Text(window).font(Theme.ui(8)).foregroundStyle(Theme.muted(dark))
+                .lineLimit(1).fixedSize(horizontal: true, vertical: false)
+                .padding(.leading, Theme.s1)
             Spacer(minLength: 0)
             SettingsButton(dark: dark) { view in monitor.presentMenu?(view) }
         }
@@ -504,7 +567,7 @@ struct SettingsButton: NSViewRepresentable {
     func makeNSView(context: Context) -> ButtonView {
         let v = ButtonView(frame: NSRect(x: 0, y: 0, width: 26, height: 20))
         let config = NSImage.SymbolConfiguration(pointSize: 12, weight: .regular)
-        v.image = NSImage(systemSymbolName: "slider.horizontal.3", accessibilityDescription: "Settings")?
+        v.image = NSImage(systemSymbolName: "slider.horizontal.3", accessibilityDescription: L("control.settings", "Settings"))?
             .withSymbolConfiguration(config)
         v.image?.isTemplate = true
         v.isBordered = false
@@ -512,7 +575,7 @@ struct SettingsButton: NSViewRepresentable {
         v.focusRingType = .none
         v.imagePosition = .imageOnly
         v.title = ""
-        v.toolTip = "Settings"
+        v.toolTip = L("control.settings", "Settings")
         v.present = present
         return v
     }
@@ -583,7 +646,7 @@ struct SectionLabel: View {
     init(_ text: String, dark: Bool, ruled: Bool = true) { self.text = text; self.dark = dark; self.ruled = ruled }
     var body: some View {
         HStack(spacing: Theme.s2) {
-            Text(text).font(Theme.ui(8.5, 600)).tracking(1.5).foregroundStyle(Theme.muted(dark))
+            Text(text).font(Theme.label()).tracking(Theme.labelTracking(1.5)).foregroundStyle(Theme.muted(dark))
                 .lineLimit(1).fixedSize(horizontal: true, vertical: false)
             if ruled { Rectangle().fill(Theme.stroke(dark)).frame(height: 1) }
         }
