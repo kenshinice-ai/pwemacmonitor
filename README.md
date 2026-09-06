@@ -87,6 +87,8 @@ answer — is anything wrong — and the panel answers the rest. [The full desig
 the prototype that settled it, is in `docs/wing-states.md`](docs/wing-states.md).
 [How the two languages
 work, and the three traps that produced bugs, is in `docs/localisation.md`](docs/localisation.md).
+[Where the panel's height goes, and the five
+layouts costed against it, is in `docs/panel-height.md`](docs/panel-height.md).
 
 When nothing is wrong the mark is drawn solid, exactly as the brand standard draws it.
 

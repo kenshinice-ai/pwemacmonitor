@@ -32,7 +32,7 @@ struct DashboardView: View {
             BrandHeader(monitor: monitor, dark: dark)
             Divider().overlay(Theme.stroke(dark))
             ScrollView(.vertical) {
-                VStack(alignment: .leading, spacing: Theme.s3) {
+                VStack(alignment: .leading, spacing: Theme.s2) {
                     if let e = monitor.error { banner(e.message) }
                     hero
                     silicon
@@ -46,7 +46,7 @@ struct DashboardView: View {
                     // what is moving in and out. This buys no height and was measured rather than
                     // assumed — a GridRow takes its taller card, the four run 74 / 88 / 89 / 106 pt,
                     // and no pairing beats 106 + 89. The old order was already at that bound.
-                    Grid(horizontalSpacing: Theme.s3, verticalSpacing: Theme.s3) {
+                    Grid(horizontalSpacing: Theme.s2, verticalSpacing: Theme.s2) {
                         GridRow { thermalCard; memory }
                         GridRow { fans; battery }
                         GridRow { storage; network }
@@ -452,23 +452,28 @@ private struct BrandHeader: View {
                     .accessibilityElement()
                     .accessibilityLabel(L("a11y.systemState", "System state"))
                     .accessibilityValue(ch.spoken)
-                VStack(alignment: .leading, spacing: 1) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text("PWE MAC MONITOR").font(Theme.serif(13, 500)).tracking(0.9)
+                    // The mark states all five channels exactly, and says nothing. Someone opening
+                    // this for the first time sees a wing and five grey bars with no statement of
+                    // what they mean; the sentence VoiceOver has always been given belongs on the
+                    // screen too. Muted while calm — colour here means "look at me".
+                    //
+                    // Second line, not a row of its own below the wing. The wing is 55 pt and the
+                    // text beside it was two lines of 27, so a third line lands in space the
+                    // header already occupied: 33 pt for nothing. It also reads better here,
+                    // directly under the name, with the hardware — which you read once — below it.
+                    // 238 pt to work in at this width; the longest reachable verdict measures 193.
+                    Text(ch.headline)
+                        .font(Theme.ui(9.5, 500))
+                        .foregroundStyle(worst == .calm ? Theme.muted(dark) : Theme.health(worst, dark: dark))
+                        .lineLimit(1).minimumScaleFactor(0.75)
                     Text("\(monitor.soc?.chipName ?? "Apple Silicon") · \(monitor.soc?.memoryGB ?? 0) GB · "
                          + String(format: L("value.up", "up %@"), Fmt.uptime(monitor.snap.uptime)))
                         .font(Theme.ui(9)).tracking(0.2).foregroundStyle(Theme.muted(dark))
                 }
-                .padding(.bottom, Theme.s1)
                 Spacer(minLength: 0)
             }
-            // The mark states all five channels exactly, and says nothing. Someone opening this
-            // for the first time sees a wing and five grey bars with no statement of what they
-            // mean; the sentence VoiceOver has always been given belongs on the screen too.
-            // Muted while calm, because colour in this interface means "look at me".
-            Text(ch.headline)
-                .font(Theme.ui(9.5, 500))
-                .foregroundStyle(worst == .calm ? Theme.muted(dark) : Theme.health(worst, dark: dark))
-                .lineLimit(1).minimumScaleFactor(0.75)
             ChannelLegend(channels: ch, dark: dark)
         }
         .padding(.horizontal, Theme.s4).padding(.vertical, Theme.s3)
