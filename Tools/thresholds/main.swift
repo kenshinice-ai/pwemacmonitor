@@ -1,37 +1,47 @@
 // Threshold sweep. Build and run:
 //   swiftc -O Sources/Core/*.swift Tools/thresholds/main.swift -o /tmp/thresholds && /tmp/thresholds
 //
-// Snapshot.channels() is the single source for every health band in the interface. This asserts
-// it grades identically to the individual *Health properties across every reachable value. It
-// earns its keep: it caught the memory channel turning hot one step early, because `pressure` is
-// an integer and `< 45` is not `<= 45`.
+// Snapshot.channels() is the single source for every health band in the interface. This asserts it
+// grades identically to the individual *Health properties across every reachable value, and — since
+// 1.3.0 — that the magnitude/verdict split actually holds.
+//
+// It earns its keep twice over now. It caught the memory channel turning hot one step early,
+// because `pressure` is an integer and `< 45` is not `<= 45`. And when the temperature and power
+// thresholds were re-cut it failed on the two calibration anchors, which is exactly the moment a
+// silent shift would otherwise have slipped through.
 import Foundation
-// Sweep every channel's driving reading and assert the new single-source band matches the old
-// per-property grading exactly. A silent threshold shift is the one regression this refactor
-// could plausibly cause and the one nobody would notice.
+
 var bad = 0, checked = 0
 func check(_ what: String, _ v: Double, _ old: Health, _ new: Health) {
     checked += 1
     if old != new { bad += 1; print("  MISMATCH \(what) at \(v): was \(old), now \(new)") }
 }
-let chip = "Max"
-for i in 0...4000 {
-    var s = Snapshot()
-    let t = Double(i) / 20                      // 0 … 200
-    s.cpuTempMax = t; s.gpuTemp = t; s.ssdTemp = t
-    s.sysPower = t; s.memory.total = 4000; s.memory.used = UInt64(i)
-    s.memory.pressure = 100 - i / 40
-    let ch = s.channels(chipClass: chip)
-    check("cpu", t, s.cpuTempMaxHealth, ch[Channel.cpu.rawValue].band)
-    check("gpu", t, s.gpuTempHealth, ch[Channel.gpu.rawValue].band)
-    check("ssd", t, s.ssdTempHealth, ch[Channel.ssd.rawValue].band)
-    check("mem", Double(i), s.memoryHealth, ch[Channel.memory.rawValue].band)
-    // power: battery absent, so the channel is pure power
-    check("pwr", t, s.powerHealth(chipClass: chip), ch[Channel.power.rawValue].band)
-    check("overall", t, [s.cpuTempMaxHealth, s.gpuTempHealth, s.ssdTempHealth, s.memoryHealth,
-                         s.powerHealth(chipClass: chip), s.batteryHealth].max() ?? .calm,
-          s.overall(chipClass: chip))
+func require(_ ok: Bool, _ msg: @autoclosure () -> String) {
+    checked += 1
+    if !ok { bad += 1; print("  \(msg())") }
 }
+let chip = "Max"
+
+// ── channels() agrees with the per-property grading, across every reachable reading ──
+for state in ThermalState.allCases {
+    for i in 0...4000 {
+        var s = Snapshot()
+        let t = Double(i) / 20                      // 0 … 200
+        s.thermal = state
+        s.cpuTempMax = t; s.gpuTemp = t; s.ssdTemp = t
+        s.sysPower = t; s.memory.total = 4000; s.memory.used = UInt64(i)
+        s.memory.pressure = 100 - i / 40
+        let ch = s.channels(chipClass: chip)
+        // The two die channels take the worse of their own reading and what macOS says.
+        check("cpu/\(state)", t, max(s.cpuTempMaxHealth, state.health), ch[Channel.cpu.rawValue].band)
+        check("gpu/\(state)", t, max(s.gpuTempHealth, state.health), ch[Channel.gpu.rawValue].band)
+        check("ssd/\(state)", t, s.ssdTempHealth, ch[Channel.ssd.rawValue].band)
+        check("mem/\(state)", Double(i), s.memoryHealth, ch[Channel.memory.rawValue].band)
+        // power: battery absent, so the channel is pure power
+        check("pwr/\(state)", t, s.powerHealth(chipClass: chip), ch[Channel.power.rawValue].band)
+    }
+}
+
 // battery folds into the power channel: sweep charge and temperature too
 for i in 0...100 {
     for ext in [true, false] {
@@ -43,21 +53,64 @@ for i in 0...100 {
     }
 }
 
-// fill must rise monotonically with the reading, and cross 0.72 exactly at warm, 1.0 at hot
+// ── the property this whole redesign exists to hold ──
+//
+// A magnitude may never turn the panel coral. Die temperature and watts are graded against numbers
+// we chose, and the numbers we chose were measured wrong: 92 °C called an M4 Max hot through 147
+// consecutive samples of ordinary sustained work while macOS never said worse than `fair`. Amber
+// arriving early is a cosmetic error. Coral arriving early teaches the reader to ignore coral.
+print("── no magnitude may reach hot ──")
+var worstTemp = Health.calm, worstPower = Health.calm
+for i in 0...4000 {
+    var s = Snapshot()                                  // thermal defaults to .nominal
+    s.cpuTempMax = Double(i) / 20                       // 0 … 200 °C
+    s.gpuTemp = s.cpuTempMax
+    s.sysPower = Double(i) / 10                         // 0 … 400 W
+    let ch = s.channels(chipClass: chip)
+    worstTemp = max(worstTemp, max(ch[Channel.cpu.rawValue].band, ch[Channel.gpu.rawValue].band))
+    worstPower = max(worstPower, ch[Channel.power.rawValue].band)
+}
+require(worstTemp != .hot, "temperature alone reached HOT — a guessed threshold is raising a false alarm")
+require(worstPower != .hot, "power alone reached HOT — a guessed envelope is raising a false alarm")
+print("  0–200 °C with macOS nominal: worst band \(worstTemp.word)")
+print("  0–400 W  with no battery:    worst band \(worstPower.word)")
+
+// ── verdicts still must reach hot, or the panel has gone blind ──
+print("── verdicts still reach hot ──")
+func band(_ build: (inout Snapshot) -> Void, _ c: Channel) -> Health {
+    var s = Snapshot(); build(&s); return s.channels(chipClass: chip)[c.rawValue].band
+}
+let verdicts: [(String, Health, Health)] = [
+    ("macOS thermalState serious", .warm, band({ $0.thermal = .serious }, .cpu)),
+    ("macOS thermalState critical", .hot, band({ $0.thermal = .critical }, .cpu)),
+    ("macOS thermalState critical (gpu)", .hot, band({ $0.thermal = .critical }, .gpu)),
+    ("memory pressure critical", .hot, band({ $0.memory.pressure = 20; $0.memory.total = 100 }, .memory)),
+    ("SSD past its rated 68 °C", .hot, band({ $0.ssdTemp = 70 }, .ssd)),
+    ("battery outside 42 °C", .hot, band({ $0.battery.present = true; $0.battery.temperature = 45 }, .power)),
+    ("battery below 10 %, unplugged", .hot, band({ $0.battery.present = true; $0.battery.percent = 5 }, .power)),
+]
+for (name, want, got) in verdicts {
+    require(want == got, "\(name): expected \(want.word), got \(got.word)")
+    print("  \(name.padding(toLength: 34, withPad: " ", startingAt: 0)) \(got.word)")
+}
+
+// ── fill rises monotonically and lands on its anchors ──
 var prev = -1.0
-for i in 0...920 {
+for i in 0...2000 {
     var s = Snapshot(); s.cpuTempMax = Double(i) / 10
     let f = s.channels(chipClass: chip)[Channel.cpu.rawValue].fill
-    if f < prev - 1e-9 { bad += 1; print("  fill went backwards at \(Double(i)/10) °C") }
+    if f < prev - 1e-9 { bad += 1; print("  fill went backwards at \(Double(i) / 10) °C") }
     prev = f
 }
-var s75 = Snapshot(); s75.cpuTempMax = 75
-var s92 = Snapshot(); s92.cpuTempMax = 92
-let f75 = s75.channels(chipClass: chip)[Channel.cpu.rawValue].fill
-let f92 = s92.channels(chipClass: chip)[Channel.cpu.rawValue].fill
-print(String(format: "  fill at the warm threshold (75 °C): %.4f  (must be 0.7200)", f75))
-print(String(format: "  fill at the hot threshold  (92 °C): %.4f  (must be 1.0000)", f92))
-if abs(f75 - 0.72) > 1e-9 || abs(f92 - 1.0) > 1e-9 { bad += 1 }
-print(bad == 0 ? "✓ \(checked) gradings checked, every threshold preserved"
-               : "✗ \(bad) mismatches out of \(checked)")
+var atWarm = Snapshot(); atWarm.cpuTempMax = Snapshot.tempWarm
+let fWarm = atWarm.channels(chipClass: chip)[Channel.cpu.rawValue].fill
+var atCritical = Snapshot(); atCritical.thermal = .critical
+let fCrit = atCritical.channels(chipClass: chip)[Channel.cpu.rawValue].fill
+print(String(format: "── fill at the warm anchor (%.0f °C): %.4f  (must be 0.7200)", Snapshot.tempWarm, fWarm))
+print(String(format: "── fill at thermalState critical:   %.4f  (must be 1.0000)", fCrit))
+require(abs(fWarm - 0.72) < 1e-9, "warm anchor moved")
+require(abs(fCrit - 1.0) < 1e-9, "critical no longer fills the feather")
+
+print(bad == 0 ? "✓ \(checked) assertions, magnitudes capped and verdicts intact"
+               : "✗ \(bad) failures out of \(checked)")
 exit(bad == 0 ? 0 : 1)

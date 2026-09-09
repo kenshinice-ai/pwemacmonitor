@@ -21,6 +21,9 @@ Reproduce with the scanner in **Measuring** below.
 | Signature + control bar + inter-module gaps | 154 | 124 |
 | **Total** | **1070** | **1021** |
 
+1.3.0 adds one row to THERMALS — macOS's thermal verdict, see `thermal-verdict.md` — and the panel
+is 1031 pt (1037 in Chinese). It also ships scheme B below.
+
 Card *content* heights, which is what a re-layout has to work with — a `GridRow` takes its taller
 card, so the row figures above hide this:
 
@@ -65,7 +68,7 @@ Together: **−49 pt**, no reading removed, no card hidden.
 
 ## The five schemes
 
-None of these is implemented. Each was costed against the measurements above.
+B shipped in 1.3.0; the rest are costed against the measurements above and not implemented.
 
 ### A · Density surgery — 377 pt, 985 pt tall
 
@@ -81,7 +84,7 @@ Every reading stays on screen; the chrome and the redundant encodings pay.
 **14": still 18 pt over. 13": still ~100 over.** Seven changes to information display for 8 %.
 Costs three redundant encodings. Not worth it on its own.
 
-### B · Progressive disclosure — 377 pt, 834 pt tall
+### B · Progressive disclosure — 377 pt, 834 pt tall — **shipped in 1.3.0**
 
 Primary view: header, CPU/GPU/POWER, cores + rails, THERMALS | MEMORY, TOP PROCESSES.
 Collapsed: FANS | BATTERY, SSD | NETWORK (and ALL SENSORS, already optional). Toggle sits in the
@@ -92,6 +95,14 @@ Not tabs. Tabs halve the content with neither half complete; here the primary vi
 `showSensors` — set once, never clicked again.
 
 **Fits every machine, 13" included.** Costs four cards behind one click.
+
+Shipped as **Panel Sections** in the settings menu rather than as chevrons on the panel: the
+resting interface is unchanged, it costs no height, and it extends the pattern `showSensors` has
+used since 1.0. Each row is switchable and remembered. All on by default, so nobody meets a panel
+with things missing.
+
+The unit is a **grid row**, not a card, and the menu is grouped that way for a reason — see the
+first dead end below.
 
 ### C · Three across — 521 pt, 965 pt tall
 
@@ -155,6 +166,7 @@ than truncating. Fine at 377; at 466 a `NETWORK · BRIDGE0` would run past the c
 |---|---|---|---|---|---|
 | 1.2.0 | 377 | 1070 | scrolls 103 | scrolls 185 | — |
 | **1.2.1** | **377** | **1021** | scrolls 54 | scrolls 138 | nothing |
+| **1.3.0** | **377** | **1031** | scrolls 64 | scrolls 148 | nothing — and any row can be switched off |
 | A | 377 | 985 | scrolls 18 | scrolls 100 | 3 redundant encodings |
 | B | 377 | 834 | ✓ | ✓ | 4 cards behind a click |
 | C+ | 521 | 929 | ✓ 38 spare | scrolls 44 | 3 redundant encodings |

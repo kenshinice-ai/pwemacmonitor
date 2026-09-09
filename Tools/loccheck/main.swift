@@ -25,6 +25,9 @@ let call = try! NSRegularExpression(pattern: #"\bL\(\s*"((?:[^"\\]|\\.)*)"\s*,\s
 
 var english: [String: String] = [:]
 var whereUsed: [String: String] = [:]
+/// Keys whose value reaches `String(format:)`. Only those get their specifiers compared — plain
+/// copy is allowed a bare `%`, and "TOP PROCESSES · % OF ONE CORE" would otherwise read as `%O`.
+var isFormat: Set<String> = []
 var problems: [String] = []
 
 for path in swiftFiles("\(root)/Sources") {
@@ -43,6 +46,11 @@ for path in swiftFiles("\(root)/Sources") {
             }
             english[key] = value
             whereUsed[key] = site
+            // Every format call site in this codebase reads `String(format: L("k", "…"), args)`,
+            // so "is there a String(format: to the left of this L(" settles it.
+            if let fmt = rawLine.range(of: "String(format:"), fmt.lowerBound < k.lowerBound {
+                isFormat.insert(key)
+            }
         }
     }
 }
@@ -77,6 +85,34 @@ if !missing.isEmpty {
 if !orphan.isEmpty {
     problems.append("· \(orphan.count) key(s) in zh-Hans.lproj no longer used:\n"
         + orphan.map { "    \($0)  \"\(zh[$0]!)\"" }.joined(separator: "\n"))
+}
+
+// A translation whose format specifiers disagree with the English is worse than a missing one.
+// `String(format:)` takes its arguments positionally off the stack: a Chinese string still asking
+// for %3$d after the English dropped to two arguments reads whatever happens to be there. It
+// cannot crash the compiler, it cannot fail loccheck's key check, and it only ever misbehaves in
+// the language nobody on the team is reading. This caught exactly that in 1.3.0, when the die
+// temperature hover stopped claiming a throttle point and lost its third argument.
+let spec = try! NSRegularExpression(pattern: #"%(\d+\$)?[-+ #0]*[\d.*]*(?:hh|h|ll|l|q|L|z|j|t)?([@dDuUxXoOfeEgGcCsSpaA%])"#)
+func specifiers(_ s: String) -> [String] {
+    let r = NSRange(s.startIndex..., in: s)
+    return spec.matches(in: s, range: r).compactMap { m -> String? in
+        guard let whole = Range(m.range, in: s) else { return nil }
+        if String(s[whole]) == "%%" { return nil }                 // an escaped percent takes no argument
+        let pos = Range(m.range(at: 1), in: s).map { String(s[$0]) } ?? ""
+        let conv = Range(m.range(at: 2), in: s).map { String(s[$0]) } ?? ""
+        return pos + conv
+    }
+}
+let mismatched = isFormat.compactMap { key -> String? in
+    guard let translated = zh[key], english[key] != nil else { return nil }
+    let want = specifiers(english[key]!).sorted(), got = specifiers(translated).sorted()
+    guard want != got else { return nil }
+    return "    \(key)  \(whereUsed[key] ?? "")\n      en  \(want.isEmpty ? "(none)" : want.joined(separator: " "))   \"\(english[key]!)\"\n      zh  \(got.isEmpty ? "(none)" : got.joined(separator: " "))   \"\(translated)\""
+}.sorted()
+if !mismatched.isEmpty {
+    problems.append("· \(mismatched.count) key(s) whose zh-Hans format specifiers disagree with the English:\n"
+        + mismatched.joined(separator: "\n"))
 }
 
 if problems.isEmpty {

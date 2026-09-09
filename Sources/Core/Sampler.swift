@@ -29,6 +29,59 @@ enum Health: Int, Comparable {
     }
 }
 
+/// macOS's own verdict on thermal pressure — the only authoritative signal this app has.
+///
+/// Everything else it grades is a *magnitude* measured against a threshold we picked: watts
+/// against an envelope, die temperature against a number. Those say how hard the machine is
+/// working, which is not the same as saying something is wrong. This one is computed by the OS
+/// from the actual thermal budget, and `serious` is defined as performance already being reduced.
+/// Free to read, no entitlement, and it posts `ProcessInfo.thermalStateDidChangeNotification`.
+enum ThermalState: Int, Comparable, CaseIterable {
+    case nominal = 0, fair, serious, critical
+    static func < (a: Self, b: Self) -> Bool { a.rawValue < b.rawValue }
+
+    init(_ s: ProcessInfo.ThermalState) {
+        switch s {
+        case .nominal: self = .nominal
+        case .fair: self = .fair
+        case .serious: self = .serious
+        case .critical: self = .critical
+        @unknown default: self = .nominal
+        }
+    }
+
+    /// Apple's own words for these are one adjective each, which tells a reader nothing about
+    /// what it means for them. Say the consequence instead.
+    var word: String {
+        switch self {
+        case .nominal:  return L("thermal.nominal", "Nominal")
+        case .fair:     return L("thermal.fair", "Slightly elevated")
+        case .serious:  return L("thermal.serious", "Performance reduced")
+        case .critical: return L("thermal.critical", "Cooling down")
+        }
+    }
+
+    /// `fair` is documented as "thermals slightly elevated, fans may become audible" — that is a
+    /// machine working, not a machine in trouble, so it takes no colour. Colour in this interface
+    /// means look at me.
+    var health: Health {
+        switch self {
+        case .nominal, .fair: return .calm
+        case .serious: return .warm
+        case .critical: return .hot
+        }
+    }
+
+    /// Contribution to a channel's strain. Only the two states that mean something contribute.
+    var strain: Double {
+        switch self {
+        case .nominal, .fair: return 0
+        case .serious: return Health.warmMark
+        case .critical: return 1
+        }
+    }
+}
+
 /// The five channels the wing mark reports, innermost feather first. Fixed at five: the mark has
 /// five feathers and the identity standard forbids changing that count, so a sixth channel would
 /// have nowhere to go. Battery therefore rides with power rather than claiming a feather.
@@ -110,12 +163,33 @@ struct Snapshot {
     var battery = BatteryStats()
     var processes: [ProcessStat] = []
     var uptime: TimeInterval = 0
+    // What the OS says, as opposed to what we measure
+    var thermal = ThermalState.nominal
+    var lowPowerMode = false
 
-    // MARK: health grading (thresholds chosen to match Apple's own thermal envelopes)
-    var cpuTempHealth: Health { Health.grade(cpuTemp, warm: 75, hot: 92) }
+    // MARK: health grading
+    //
+    // Two kinds of signal live here and they are no longer drawn the same way.
+    //
+    // A **verdict** comes from the OS or a published limit and means something is wrong: macOS's
+    // `thermalState`, memory pressure, the battery outside Apple's operating range, the SSD past
+    // its rated temperature. Only these may reach `.hot`.
+    //
+    // A **magnitude** is a number graded against a threshold we chose — die temperature, watts.
+    // These cap at `.warm`. Measured 2026-09-09 on an M4 Max, which is why:
+    //
+    //   ordinary use (20–36 % CPU)   67–82 °C avg, 76–90 °C peak, 33–42 W   thermalState nominal
+    //   sustained full load          96–110 °C avg, 105–117 °C peak, ≤143 W thermalState fair
+    //
+    // The old thresholds called 92 °C hot, so every one of 147 load samples graded hot while macOS
+    // never once said worse than `fair` — and ordinary browsing peaked at 89.5 °C, 2.5 °C short of
+    // a red panel. Raising the number would only move the guess. Capping magnitudes at warm makes a
+    // mis-calibrated threshold cosmetic — amber arrives early or late — instead of a false alarm.
+    static let tempWarm = 95.0, tempFill = 110.0
+    var cpuTempHealth: Health { min(.warm, Health.grade(cpuTemp, warm: Snapshot.tempWarm, hot: Snapshot.tempFill)) }
     /// The hottest core is what actually drives throttling, so it grades separately from the average.
-    var cpuTempMaxHealth: Health { Health.grade(cpuTempMax, warm: 75, hot: 92) }
-    var gpuTempHealth: Health { Health.grade(gpuTemp, warm: 75, hot: 92) }
+    var cpuTempMaxHealth: Health { min(.warm, Health.grade(cpuTempMax, warm: Snapshot.tempWarm, hot: Snapshot.tempFill)) }
+    var gpuTempHealth: Health { min(.warm, Health.grade(gpuTemp, warm: Snapshot.tempWarm, hot: Snapshot.tempFill)) }
     var ssdTempHealth: Health { ssdTemp == 0 ? .calm : Health.grade(ssdTemp, warm: 55, hot: 68) }
     var cpuLoadHealth: Health { Health.grade(cpuUsage, warm: 0.55, hot: 0.85) }
     var gpuLoadHealth: Health { Health.grade(gpuUsage, warm: 0.55, hot: 0.85) }
@@ -132,9 +206,20 @@ struct Snapshot {
         if battery.temperature > 38 || (battery.percent < 20 && !battery.externalPower) { return .warm }
         return .calm
     }
+    /// The system rail's rough ceiling, per chip class. The old table read like package-power
+    /// figures while `sysPower` is SMC `PSTR` — the whole machine, display included — so it was
+    /// low by a wide margin: an M4 Max measured 142.8 W against a coded 80. Max is the measured
+    /// one; the others are that correction applied proportionally and are **unverified**. Being
+    /// wrong here is now cosmetic, because power can no longer reach `.hot`.
+    static func powerEnvelope(_ chipClass: String) -> Double {
+        ["Ultra": 210, "Max": 140, "Pro": 79][chipClass] ?? 38
+    }
+    /// Never `.hot`. A chip drawing its full envelope is doing what it was built to do — the same
+    /// reason `busy()` caps CPU and GPU load in the panel. Warm at 85 % says "near the ceiling",
+    /// which is worth seeing; coral would say "something is wrong", which it is not.
     func powerHealth(chipClass: String) -> Health {
-        let hot: Double = ["Ultra": 120, "Max": 80, "Pro": 45][chipClass] ?? 22
-        return Health.grade(sysPower, warm: hot * 0.45, hot: hot)
+        let envelope = Snapshot.powerEnvelope(chipClass)
+        return min(.warm, Health.grade(sysPower, warm: envelope * 0.85, hot: envelope))
     }
     func overall(chipClass: String) -> Health {
         channels(chipClass: chipClass).map(\.band).max() ?? .calm
@@ -142,7 +227,8 @@ struct Snapshot {
 
     /// Strain per channel, innermost feather first. Every band shown anywhere in the interface
     /// comes from here — including `overall` — so the mark, the legend and the cards cannot
-    /// drift apart. Thresholds are the same ones the individual `*Health` properties use.
+    /// drift apart. Thresholds are the same ones the individual `*Health` properties use, with
+    /// `thermal` folded into the two die channels on top.
     func channels(chipClass: String) -> [ChannelHealth] {
         Channel.allCases.map { c in
             let v: Double
@@ -161,8 +247,12 @@ struct Snapshot {
             case .ssd:
                 v = ssdTemp == 0 ? 0 : Health.strain(ssdTemp, warm: 55, hot: 68)
             case .power:
-                let envelope: Double = ["Ultra": 120, "Max": 80, "Pro": 45][chipClass] ?? 22
-                var s = Health.strain(sysPower, warm: envelope * 0.45, hot: envelope)
+                // Watts are a magnitude and cap at warm; the battery conditions below are real
+                // limits — Apple's operating range and a charge that is about to run out — and
+                // keep their path to hot.
+                let envelope = Snapshot.powerEnvelope(chipClass)
+                var s = min(Health.warmMark + 0.14,
+                            Health.strain(sysPower, warm: envelope * 0.85, hot: envelope))
                 if battery.present {
                     // `.nextUp` because `strain` grades inclusively and the rule this replaces
                     // was strictly greater. Cheaper to be exact than to argue about whether a
@@ -174,10 +264,17 @@ struct Snapshot {
                     }
                 }
                 v = s
+            // Die temperature fills the feather; macOS decides whether it is a problem. Both
+            // feathers take the thermal state because it is one condition on one die — and it is
+            // the only signal here that measured out as tracking reality (see `tempWarm`).
             case .gpu:
-                v = Health.strain(gpuTemp, warm: 75, hot: 92)
+                v = max(min(Health.warmMark + 0.14,
+                            Health.strain(gpuTemp, warm: Snapshot.tempWarm, hot: Snapshot.tempFill)),
+                        thermal.strain)
             case .cpu:
-                v = Health.strain(cpuTempMax, warm: 75, hot: 92)
+                v = max(min(Health.warmMark + 0.14,
+                            Health.strain(cpuTempMax, warm: Snapshot.tempWarm, hot: Snapshot.tempFill)),
+                        thermal.strain)
             }
             return ChannelHealth(channel: c,
                                  band: Health.grade(v, warm: Health.warmMark, hot: 1),
@@ -197,24 +294,49 @@ extension Array where Element == ChannelHealth {
     /// The mark encodes all five channels as colour and feather length, which is exact and
     /// silent: someone opening the panel for the first time sees five grey bars and no statement
     /// of what they mean. This is that statement, and it is the first thing under the wordmark.
-    var headline: String {
-        guard let worst = notable.first else { return L("verdict.calm", "All five channels calm") }
-        let one = String(format: L("verdict.one", "%1$@ %2$@ · %3$d%% to its limit"),
-                         worst.channel.name, worst.band.word, Int((worst.fill * 100).rounded()))
-        guard notable.count > 1 else { return one }
-        return one + String(format: L("verdict.more", " · +%d more"), notable.count - 1)
+    /// `thermal` and `lowPower` are passed in rather than read from a channel because neither is
+    /// one: they are conditions on the whole machine, and both answer the question a reader
+    /// actually arrives with — why is this slow — which no per-channel number does.
+    func headline(thermal: ThermalState = .nominal, lowPower: Bool = false) -> String {
+        var parts: [String] = []
+        // macOS leads when it has something to say. `serious` is defined as performance already
+        // being reduced, which outranks any reading we took ourselves.
+        if thermal >= .serious { parts.append(thermal.word) }
+        // Only channels worse than the state already explains. The thermal state lifts the two die
+        // channels itself, so without this the line reads "Performance reduced · GPU warm · 72% to
+        // its limit" — and that 72 % is the state's own contribution, not the GPU's temperature.
+        // Saying it twice makes one condition look like two.
+        let listed = thermal >= .serious ? notable.filter { $0.band > thermal.health } : notable
+        if let worst = listed.first {
+            parts.append(String(format: L("verdict.one", "%1$@ %2$@ · %3$d%% to its limit"),
+                                worst.channel.name, worst.band.word, Int((worst.fill * 100).rounded())))
+            if listed.count > 1 {
+                parts[parts.count - 1] += String(format: L("verdict.more", " · +%d more"), listed.count - 1)
+            }
+        }
+        if parts.isEmpty { parts.append(L("verdict.calm", "All five channels calm")) }
+        // Low Power Mode caps performance on purpose. A panel that cannot see it leaves the reader
+        // hunting for a fault that is a setting.
+        if lowPower { parts.append(L("verdict.lowPower", "Low Power Mode")) }
+        return parts.joined(separator: L("verdict.joiner", " · "))
     }
 
     /// The same reading for VoiceOver, at length. Sentence shape is table data rather than string
     /// interpolation — the joiner and the closing clause are entries of their own — because
     /// English punctuation baked into the concatenation produces Chinese that does not parse.
-    var spoken: String {
-        guard !notable.isEmpty else { return L("a11y.allCalm", "All five channels calm.") }
-        let list = notable.map {
+    func spoken(thermal: ThermalState = .nominal, lowPower: Bool = false) -> String {
+        // Same two conditions the printed verdict leads with, and for the same reason: a screen
+        // reader user asking why the machine is slow needs them before any per-channel figure.
+        var lead = ""
+        if thermal >= .serious { lead = thermal.word + L("a11y.sentenceEnd", ". ") }
+        if lowPower { lead += L("verdict.lowPower", "Low Power Mode") + L("a11y.sentenceEnd", ". ") }
+        let listed = thermal >= .serious ? notable.filter { $0.band > thermal.health } : notable
+        guard !listed.isEmpty else { return lead + L("a11y.allCalm", "All five channels calm.") }
+        let list = listed.map {
             String(format: L("a11y.channel", "%1$@ %2$@, %3$d percent of the way to its limit"),
                    $0.channel.name, $0.band.word, Int(($0.fill * 100).rounded()))
         }
-        return list.joined(separator: L("a11y.joiner", ". ")) + L("a11y.restCalm", ". The rest calm.")
+        return lead + list.joined(separator: L("a11y.joiner", ". ")) + L("a11y.restCalm", ". The rest calm.")
     }
 }
 
@@ -413,6 +535,8 @@ final class Sampler {
         s.ssdTemp = ssdT.max() ?? 0
         s.sensors = sensors.sorted { ($0.name, $0.id) < ($1.name, $1.id) }
         s.sysPower = max(s.sysPower, s.allPower)
+        s.thermal = ThermalState(ProcessInfo.processInfo.thermalState)
+        s.lowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
 
         s.memory = MemoryStats.read()
         s.battery = BatteryStats.read()

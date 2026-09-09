@@ -253,10 +253,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         menu.setSubmenu(languages, for: menu.addItem(withTitle: L("menu.language", "Language"), action: nil, keyEquivalent: ""))
 
+        // Panel sections. The unit is a grid row rather than a card because a GridRow takes the
+        // height of its taller card — hiding one of a pair reclaims nothing.
+        let sections = NSMenu()
+        for (key, title, on) in [
+            ("thermalMemory", L("section.thermalMemory", "Thermals & Memory"), monitor.showThermalMemory),
+            ("fansBattery", L("section.fansBattery", "Fans & Battery"), monitor.showFansBattery),
+            ("storageNetwork", L("section.storageNetwork", "Storage & Network"), monitor.showStorageNetwork),
+            ("processes", L("section.processes", "Top Processes"), monitor.showProcesses),
+            ("sensors", L("menu.sensors", "All Sensors"), monitor.showSensors),
+        ] {
+            let it = sections.addItem(withTitle: title, action: #selector(toggleSection(_:)), keyEquivalent: "")
+            it.representedObject = key
+            it.state = on ? .on : .off
+            it.target = self
+        }
+        menu.setSubmenu(sections, for: menu.addItem(withTitle: L("menu.sections", "Panel Sections"), action: nil, keyEquivalent: ""))
+
         menu.addItem(.separator())
-        let sensors = menu.addItem(withTitle: L("menu.sensors", "Show All Sensors"), action: #selector(toggleSensors), keyEquivalent: "")
-        sensors.state = monitor.showSensors ? .on : .off
-        sensors.target = self
         let login = menu.addItem(withTitle: L("menu.login", "Launch at Login"), action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
         login.state = monitor.launchAtLogin ? .on : .off
         login.target = self
@@ -284,7 +298,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     @objc private func openFromMenu() { openPopover() }
-    @objc private func toggleSensors() { monitor.showSensors.toggle() }
+    @objc private func toggleSection(_ item: NSMenuItem) {
+        switch item.representedObject as? String {
+        case "thermalMemory":  monitor.showThermalMemory.toggle()
+        case "fansBattery":    monitor.showFansBattery.toggle()
+        case "storageNetwork": monitor.showStorageNetwork.toggle()
+        case "processes":      monitor.showProcesses.toggle()
+        case "sensors":        monitor.showSensors.toggle()
+        default: break
+        }
+    }
     @objc private func openReleases() { NSWorkspace.shared.open(Install.releasesURL) }
     @objc private func openRepository() { NSWorkspace.shared.open(Install.repositoryURL) }
     @objc private func toggleLaunchAtLogin() { monitor.launchAtLogin.toggle() }

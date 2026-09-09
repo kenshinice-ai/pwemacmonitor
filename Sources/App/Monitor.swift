@@ -60,6 +60,20 @@ final class Monitor: ObservableObject {
     @Published var interval: Double { didSet { defaults.set(interval, forKey: "interval"); restart() } }
     @Published var menuBarMode: MenuBarMode { didSet { defaults.set(menuBarMode.rawValue, forKey: "menuBarMode"); onUpdate?() } }
     @Published var showSensors: Bool { didSet { defaults.set(showSensors, forKey: "showSensors"); syncSensorPanel(); bump() } }
+
+    /// Which sections the panel draws. The unit is a **grid row**, not a card, and that is not a
+    /// simplification: a `GridRow` takes the height of its taller card, so hiding one card of a
+    /// pair reclaims nothing at all. Grouped by row, hiding one is worth 105–174 pt.
+    ///
+    /// They live in the settings menu rather than as chevrons on the panel, which keeps the resting
+    /// interface unchanged and costs no height — and it is the pattern `showSensors` has used since
+    /// 1.0 without confusing anyone.
+    @Published var showThermalMemory: Bool { didSet { section("thermalMemory", showThermalMemory) } }
+    @Published var showFansBattery: Bool { didSet { section("fansBattery", showFansBattery) } }
+    @Published var showStorageNetwork: Bool { didSet { section("storageNetwork", showStorageNetwork) } }
+    @Published var showProcesses: Bool { didSet { section("processes", showProcesses) } }
+
+    private func section(_ key: String, _ on: Bool) { defaults.set(on, forKey: "section." + key); bump() }
     @Published var launchAtLogin: Bool { didSet { applyLaunchAtLogin() } }
     @Published var language: Language {
         didSet { defaults.set(language.rawValue, forKey: "language"); Loc.language = language; onUpdate?(); bump() }
@@ -96,6 +110,18 @@ final class Monitor: ObservableObject {
         interval = [1.0, 2.0, 3.0, 5.0].contains(stored) ? stored : 2
         menuBarMode = MenuBarMode(rawValue: defaults.string(forKey: "menuBarMode") ?? "") ?? .full
         showSensors = defaults.bool(forKey: "showSensors")
+        // An absent key reads as false through `bool(forKey:)`, which would ship every section
+        // switched off on first launch.
+        // `UserDefaults.standard` rather than `self.defaults`, and a name apart from the instance
+        // method: touching either would be using `self` before every stored property is up.
+        // `object(forKey:)`, not `bool(forKey:)` — see below.
+        func storedSection(_ key: String) -> Bool {
+            UserDefaults.standard.object(forKey: "section." + key) as? Bool ?? true
+        }
+        showThermalMemory = storedSection("thermalMemory")
+        showFansBattery = storedSection("fansBattery")
+        showStorageNetwork = storedSection("storageNetwork")
+        showProcesses = storedSection("processes")
         launchAtLogin = SMAppService.mainApp.status == .enabled
         // Through a local: the compiler will not let `Loc` read back `self.language` until every
         // stored property is up, and the string tables have to be pointed at the right language

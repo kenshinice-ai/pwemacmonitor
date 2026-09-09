@@ -46,12 +46,14 @@ struct DashboardView: View {
                     // what is moving in and out. This buys no height and was measured rather than
                     // assumed — a GridRow takes its taller card, the four run 74 / 88 / 89 / 106 pt,
                     // and no pairing beats 106 + 89. The old order was already at that bound.
-                    Grid(horizontalSpacing: Theme.s2, verticalSpacing: Theme.s2) {
-                        GridRow { thermalCard; memory }
-                        GridRow { fans; battery }
-                        GridRow { storage; network }
+                    if monitor.showThermalMemory || monitor.showFansBattery || monitor.showStorageNetwork {
+                        Grid(horizontalSpacing: Theme.s2, verticalSpacing: Theme.s2) {
+                            if monitor.showThermalMemory { GridRow { thermalCard; memory } }
+                            if monitor.showFansBattery { GridRow { fans; battery } }
+                            if monitor.showStorageNetwork { GridRow { storage; network } }
+                        }
                     }
-                    processes
+                    if monitor.showProcesses { processes }
                     if monitor.showSensors { sensors }
                     signature
                 }
@@ -71,6 +73,10 @@ struct DashboardView: View {
         .background(Theme.background(dark))
         .foregroundStyle(Theme.ink(dark))
         .animation(.easeInOut(duration: 0.18), value: monitor.showSensors)
+        .animation(.easeInOut(duration: 0.18), value: monitor.showThermalMemory)
+        .animation(.easeInOut(duration: 0.18), value: monitor.showFansBattery)
+        .animation(.easeInOut(duration: 0.18), value: monitor.showStorageNetwork)
+        .animation(.easeInOut(duration: 0.18), value: monitor.showProcesses)
     }
 
     private func banner(_ e: String) -> some View {
@@ -133,22 +139,32 @@ struct DashboardView: View {
     private var thermalCard: some View {
         Card(dark: dark, title: L("card.thermals", "THERMALS"), fills: true) {
             VStack(spacing: 7) {
-                gauge(L("row.cpuAvg", "CPU avg"), s.cpuTemp, s.cpuTempHealth, hot: 92)
-                gauge(L("row.cpuMax", "CPU max"), s.cpuTempMax, s.cpuTempMaxHealth, hot: 92)
-                gauge("GPU", s.gpuTemp, s.gpuTempHealth, hot: 92)
-                gauge("SSD", s.ssdTemp, s.ssdTempHealth, hot: 68)
+                // macOS's verdict, above the readings it explains. Every number below it is a
+                // magnitude graded against a threshold we picked; this line is the only one in
+                // the card that comes from the OS, and the only one allowed to turn coral.
+                kv(L("row.thermalState", "Thermal state"), s.thermal.word,
+                   color: s.thermal.health == .calm ? nil : Theme.health(s.thermal.health, dark: dark))
+                    .help(L("help.thermalState", "Reported by macOS from the machine's own thermal budget. 'Performance reduced' means the system is already throttling; the temperatures below are readings, not verdicts."))
+                gauge(L("row.cpuAvg", "CPU avg"), s.cpuTemp, s.cpuTempHealth, limit: nil)
+                gauge(L("row.cpuMax", "CPU max"), s.cpuTempMax, s.cpuTempMaxHealth, limit: nil)
+                gauge("GPU", s.gpuTemp, s.gpuTempHealth, limit: nil)
+                gauge("SSD", s.ssdTemp, s.ssdTempHealth, limit: 68)
                 // Graded on its own reading, not on `batteryHealth`: that one folds in charge
                 // level, so a nearly flat battery used to turn this temperature row red.
-                gauge(L("row.battery", "Battery"), s.batteryTemp, Health.grade(s.batteryTemp, warm: 38, hot: 42), hot: 42)
+                gauge(L("row.battery", "Battery"), s.batteryTemp, Health.grade(s.batteryTemp, warm: 38, hot: 42), limit: 42)
             }
         }
     }
 
-    /// Temperature bars share a 20–100 °C scale so the five rows are visually comparable.
-    /// The bar runs from room temperature to 100 °C — the same scale on every row, so their
-    /// lengths are comparable. It is not a distance-to-limit scale; `hot` is only carried here so
-    /// the hover can say where the limit actually is, which differs per sensor.
-    private func gauge(_ name: String, _ v: Double, _ h: Health, hot: Double) -> some View {
+    /// Temperature bars share a 20–120 °C scale so the five rows are visually comparable — not a
+    /// distance-to-limit scale. 120, not the 100 it used to be: an M4 Max measured 117 °C on its
+    /// hottest core under sustained load, which pinned every bar to full and made the row useless
+    /// exactly when it mattered.
+    ///
+    /// `limit` is a *published* limit and appears in the hover. The SSD has one from its vendor and
+    /// the battery has Apple's operating range; the CPU and GPU dies have neither, so they pass nil
+    /// and the hover says who decides instead of inventing a number.
+    private func gauge(_ name: String, _ v: Double, _ h: Health, limit: Double?) -> some View {
         VStack(spacing: 3) {
             HStack(spacing: 4) {
                 Text(name).font(Theme.ui(10)).foregroundStyle(Theme.muted(dark))
@@ -159,15 +175,17 @@ struct DashboardView: View {
                 Text(v > 0 ? Fmt.temp1(v) : "—").font(Theme.number(10, 600))
                     .foregroundStyle(v > 0 ? Theme.health(h, dark: dark) : Theme.muted(dark))
             }
-            Bar(value: v > 0 ? (v - 20) / 80 : 0, color: Theme.healthFill(h, dark: dark), dark: dark)
+            Bar(value: v > 0 ? (v - 20) / 100 : 0, color: Theme.healthFill(h, dark: dark), dark: dark)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(name)
         .accessibilityValue(v > 0 ? String(format: L("a11y.reading", "%1$@, %2$@"), Fmt.temp1(v), h.word)
                                   : L("value.noReading", "no reading"))
-        .help(v > 0 ? String(format: L("help.gauge", "%1$@ · %2$@ · throttles at %3$d °C · bar spans 20–100 °C"),
-                             Fmt.temp1(v), h.word, Int(hot))
-                    : L("help.noSensor", "no reading from this sensor"))
+        .help(v <= 0 ? L("help.noSensor", "no reading from this sensor")
+              : limit.map { String(format: L("help.gaugeLimit", "%1$@ · %2$@ · rated to %3$d °C · bar spans 20–120 °C"),
+                                   Fmt.temp1(v), h.word, Int($0)) }
+                ?? String(format: L("help.gauge", "%1$@ · %2$@ · bar spans 20–120 °C · macOS decides whether this is a problem, see Thermal state"),
+                          Fmt.temp1(v), h.word))
     }
 
     // MARK: Fans
@@ -451,7 +469,7 @@ private struct BrandHeader: View {
                     .frame(width: 55 * BrandMark.aspect, height: 55)   // Fibonacci; below this the innermost feather is too thin to hold a colour
                     .accessibilityElement()
                     .accessibilityLabel(L("a11y.systemState", "System state"))
-                    .accessibilityValue(ch.spoken)
+                    .accessibilityValue(ch.spoken(thermal: monitor.snap.thermal, lowPower: monitor.snap.lowPowerMode))
                 VStack(alignment: .leading, spacing: 2) {
                     Text("PWE MAC MONITOR").font(Theme.serif(13, 500)).tracking(0.9)
                     // The mark states all five channels exactly, and says nothing. Someone opening
@@ -464,7 +482,7 @@ private struct BrandHeader: View {
                     // header already occupied: 33 pt for nothing. It also reads better here,
                     // directly under the name, with the hardware — which you read once — below it.
                     // 238 pt to work in at this width; the longest reachable verdict measures 193.
-                    Text(ch.headline)
+                    Text(ch.headline(thermal: monitor.snap.thermal, lowPower: monitor.snap.lowPowerMode))
                         .font(Theme.ui(9.5, 500))
                         .foregroundStyle(worst == .calm ? Theme.muted(dark) : Theme.health(worst, dark: dark))
                         .lineLimit(1).minimumScaleFactor(0.75)

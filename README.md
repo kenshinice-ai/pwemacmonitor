@@ -68,8 +68,9 @@ Left-click opens the dashboard. Right-click opens settings.
 | <img src="docs/menubar-compact-dark.png" width="150"> | **Power + temperature** |
 | <img src="docs/menubar-full-dark.png" width="200"> | **CPU + power + temperature** |
 
-The settings menu also carries **Refresh Every** (1–5 s), **Show All Sensors** (the ~200-key PMU
-dump), **Launch at Login**, **Language**, **Open Activity Monitor** — seeing which process is
+The settings menu also carries **Refresh Every** (1–5 s), **Panel Sections** — thermals & memory,
+fans & battery, storage & network, top processes, and the ~200-key PMU sensor dump, each switchable
+and remembered — **Launch at Login**, **Language**, **Open Activity Monitor** — seeing which process is
 pegging a core is half the job, and this app deliberately cannot kill anything — and **Copy
 Diagnostics**, which puts the `--probe` reading plus the version and OS build on the clipboard for
 a bug report.
@@ -89,6 +90,8 @@ the prototype that settled it, is in `docs/wing-states.md`](docs/wing-states.md)
 work, and the three traps that produced bugs, is in `docs/localisation.md`](docs/localisation.md).
 [Where the panel's height goes, and the five
 layouts costed against it, is in `docs/panel-height.md`](docs/panel-height.md).
+[Why a magnitude may not turn the panel red, with the
+measurements behind it, is in `docs/thermal-verdict.md`](docs/thermal-verdict.md).
 
 When nothing is wrong the mark is drawn solid, exactly as the brand standard draws it.
 
@@ -97,8 +100,15 @@ When nothing is wrong the mark is drawn solid, exactly as the brand standard dra
 | Colour | State | Triggered by |
 |---|---|---|
 | *none — normal ink* | Calm | everything inside the normal envelope |
-| **Amber** | Warm | CPU/GPU ≥ 75 °C · SSD ≥ 55 °C · memory pressure elevated · power ≥ 45 % of the chip's envelope |
-| **Coral** | Hot | CPU/GPU ≥ 92 °C · SSD ≥ 68 °C · memory critical · power over envelope · battery > 42 °C |
+| **Amber** | Warm | macOS reports thermal pressure · memory pressure elevated · SSD ≥ 55 °C · a die or the power rail near its ceiling |
+| **Coral** | Hot | macOS is cooling the machine down · memory critical · SSD past its 68 °C rating · battery outside 38–42 °C or nearly flat |
+
+Coral is reserved for a **verdict** — something macOS or a published limit says is wrong. A
+**magnitude** we grade ourselves, like a die temperature or a wattage, tops out at amber however
+high it goes. That is not a stylistic choice: the thresholds this replaced called an M4 Max hot
+through 147 consecutive samples of ordinary sustained work while macOS never said worse than
+*fair*, and ordinary browsing came within 2.5 °C of a red panel.
+[The measurements and the policy are in `docs/thermal-verdict.md`](docs/thermal-verdict.md).
 
 A calm reading is deliberately not coloured. It renders in the ordinary text ink, so colour in this
 interface always means *look at me* — you can tell at a glance from across the room whether anything
