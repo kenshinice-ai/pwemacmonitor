@@ -1,4 +1,4 @@
-PWE MAC MONITOR
+PWE Monitor
 A PARADISE PRODUCTION · 天域文创出品
 
 The app is in English and 简体中文. It follows your Mac; Language in the settings menu
@@ -8,7 +8,7 @@ overrides that.
 ════════════════════════════════════════════════════════════════════════ ENGLISH ══
 
 INSTALLING
-1. Drag "PWE MAC MONITOR" onto the Applications folder in this window.
+1. Drag "PWE Monitor" onto the Applications folder in this window.
 2. Open it from Applications. It has no window — look for the wing mark in your menu bar,
    at the top right of the screen.
 3. Click the wing to open the dashboard. Right-click it for settings.
@@ -32,7 +32,7 @@ that do not exist on Intel hardware.
 ═══════════════════════════════════════════════════════════════════════ 简体中文 ══
 
 安装
-1. 把本窗口里的「PWE MAC MONITOR」拖到「应用程序」文件夹上。
+1. 把本窗口里的「PWE Monitor」拖到「应用程序」文件夹上。
 2. 从「应用程序」里打开它。它没有窗口 —— 请在屏幕右上角的菜单栏里找那个羽翼标记。
 3. 左键点羽翼打开面板,右键打开设置。
 

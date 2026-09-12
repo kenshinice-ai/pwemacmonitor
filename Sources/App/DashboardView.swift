@@ -15,6 +15,14 @@ import SwiftUI
 struct DashboardView: View {
     @ObservedObject var monitor: Monitor
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// The curve the sections open and close with, or nothing at all when the reader has asked
+    /// for less movement. 180 ms puts it in the "several times a day" band — long enough to
+    /// follow, short enough not to wait for (planning doc 17 §4.5).
+    private var disclosure: Animation? {
+        reduceMotion ? nil : .easeInOut(duration: 0.18)
+    }
     private var dark: Bool { scheme == .dark }
     private var s: Snapshot { monitor.snap }
 
@@ -72,11 +80,14 @@ struct DashboardView: View {
         .frame(width: Theme.width)
         .background(Theme.background(dark))
         .foregroundStyle(Theme.ink(dark))
-        .animation(.easeInOut(duration: 0.18), value: monitor.showSensors)
-        .animation(.easeInOut(duration: 0.18), value: monitor.showThermalMemory)
-        .animation(.easeInOut(duration: 0.18), value: monitor.showFansBattery)
-        .animation(.easeInOut(duration: 0.18), value: monitor.showStorageNetwork)
-        .animation(.easeInOut(duration: 0.18), value: monitor.showProcesses)
+        // Nil, not a shorter duration: "reduce motion" asks for the section to be there or not
+        // be there, and a section unfolding is exactly the vestibular movement it means. The
+        // state change still happens, so nothing is hidden and no feedback is lost.
+        .animation(disclosure, value: monitor.showSensors)
+        .animation(disclosure, value: monitor.showThermalMemory)
+        .animation(disclosure, value: monitor.showFansBattery)
+        .animation(disclosure, value: monitor.showStorageNetwork)
+        .animation(disclosure, value: monitor.showProcesses)
     }
 
     private func banner(_ e: String) -> some View {
@@ -433,10 +444,25 @@ struct DashboardView: View {
         }
     }
 
+    /// The signature line.
+    ///
+    /// Was "A PARADISE PRODUCTION · 天域文创出品". Two things were wrong with it: 「文创」 was
+    /// retired when the house became PWE · 天域 (planning doc 17 §2.3), and the +1.1 tracking was
+    /// a Latin value applied to Han, which spaces out 天 域 出 品 into four separate words rather
+    /// than opening a line. `labelTracking` is the branch that already knew the difference.
     private var signature: some View {
-        Text("A PARADISE PRODUCTION · 天域文创出品")
-            .font(Theme.serif(8.5, 500)).tracking(1.1).foregroundStyle(Theme.muted(dark))
-            .frame(maxWidth: .infinity, alignment: .center).padding(.top, 2)
+        // Two runs, because this one line is two scripts and they want opposite things. Latin
+        // small caps need the tracking; Han does not have small caps at all, and spacing 天域出品
+        // apart reads as four separate words rather than as an opened line. `labelTracking`
+        // branches on the *interface* language, which cannot help here — this string carries both
+        // scripts whichever language is in force.
+        HStack(spacing: 4) {
+            Text(verbatim: "PWE").tracking(1.1)
+            Text(verbatim: "·")
+            Text(verbatim: "天域出品")
+        }
+        .font(Theme.label(8.5)).foregroundStyle(Theme.muted(dark))
+        .frame(maxWidth: .infinity, alignment: .center).padding(.top, 2)
     }
 
     private func kv(_ k: String, _ v: String, color: Color? = nil, swatch: Color? = nil) -> some View {
@@ -471,7 +497,13 @@ private struct BrandHeader: View {
                     .accessibilityLabel(L("a11y.systemState", "System state"))
                     .accessibilityValue(ch.spoken(thermal: monitor.snap.thermal, lowPower: monitor.snap.lowPowerMode))
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("PWE MAC MONITOR").font(Theme.serif(13, 500)).tracking(0.9)
+                    // "PWE Monitor", not "PWE MAC MONITOR": the platform is a version, not part
+                    // of the name (doc 17 §5.1), and full caps was the only shouting name in the
+                    // family. The bundle identifier, the cask token and the repository keep the
+                    // old spelling — those are addresses, and renaming an address strands whoever
+                    // already has it.
+                    Text(verbatim: "PWE Monitor").font(Theme.wordmark(14, 600))
+                        .tracking(Theme.labelTracking(0.3))
                     // The mark states all five channels exactly, and says nothing. Someone opening
                     // this for the first time sees a wing and five grey bars with no statement of
                     // what they mean; the sentence VoiceOver has always been given belongs on the

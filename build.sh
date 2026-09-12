@@ -1,7 +1,7 @@
 #!/bin/zsh
-# Build PWE MAC MONITOR.
+# Build PWE Monitor.
 #
-#   ./build.sh              build build/PWE MAC MONITOR.app
+#   ./build.sh              build build/PWE Monitor.app
 #   ./build.sh --run        build, then launch it
 #   ./build.sh --dmg        build, then package a drag-to-install disk image
 #
@@ -20,7 +20,15 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-APP_NAME="PWE MAC MONITOR"
+# The bundle, and therefore what Finder shows. Renaming only CFBundleDisplayName does not do it:
+# Finder reports kMDItemDisplayName from the filename, so the app would have said "PWE Monitor" in
+# its own interface and "PWE MAC MONITOR" everywhere the system named it.
+#
+# The DMG filename, the cask token, the bundle identifier and the repository all keep the old
+# spelling on purpose. Those are addresses — the site's deploy.sh fetches PWE-MAC-MONITOR-x.y.z.dmg
+# by name, and an installed cask uninstalls itself using the definition saved when it was
+# installed. Renaming an address strands whoever already has it.
+APP_NAME="PWE Monitor"
 # Build outside the project directory. On iCloud Drive the file provider keeps re-applying
 # com.apple.FinderInfo to the bundle, and codesign refuses to sign anything carrying it — stripping
 # the attribute and signing is a race you lose intermittently. Assemble and sign somewhere plain,
@@ -68,7 +76,6 @@ swiftc -O Tools/loccheck/main.swift -o "$WORK/loccheck"
 echo "▸ resources"
 # ditto --norsrc --noextattr strips the metadata at copy time rather than after the fact.
 ditto --norsrc --noextattr --noacl build/AppIcon.icns "$RES/AppIcon.icns"
-ditto --norsrc --noextattr --noacl Resources/Fonts "$RES/Fonts"   # ATSApplicationFontsPath
 for lproj in Resources/*.lproj; do
   ditto --norsrc --noextattr --noacl "$lproj" "$RES/$(basename "$lproj")"
 done

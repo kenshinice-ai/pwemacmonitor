@@ -1,7 +1,7 @@
 // 简体中文。这是唯一需要手工维护的字符串表 —— en.lproj 由 Tools/loccheck 从源码里的
 // L("key", "English") 生成。改动后跑 ./build.sh,loccheck 会挡住任何缺失或多余的 key。
 //
-// 不翻译:PWE MAC MONITOR、五个通道键 MEM/SSD/PWR/GPU/CPU、电源轨 CPU/GPU/ANE/DRAM、
+// 不翻译:PWE Monitor、五个通道键 MEM/SSD/PWR/GPU/CPU、电源轨 CPU/GPU/ANE/DRAM、
 // 核簇 E/P、单位、SMC 传感器名、进程名,以及 --probe / --json 的全部输出。
 
 "a11y.allCalm" = "五个通道均平稳。";
@@ -24,7 +24,7 @@
 "channel.storage" = "存储";
 "control.every" = "每";
 "control.settings" = "设置";
-"error.hardware" = "无法读取硬件数据 —— PWE MAC MONITOR 需要 Apple 芯片的 Mac。";
+"error.hardware" = "无法读取硬件数据 —— PWE Monitor 需要 Apple 芯片的 Mac。";
 "error.login" = "无法设置开机启动 —— 请先把 App 移到「应用程序」再试。";
 "fmt.uptime.dh" = "%1$d 天 %2$d 小时";
 "fmt.uptime.hm" = "%1$d 小时 %2$d 分";
@@ -45,13 +45,13 @@
 "hero.power" = "功耗";
 "hero.powerHelp" = "整机系统电源轨。「四路合计」是下方 CPU / GPU / ANE / DRAM 四条计算电源轨之和,两者之差是屏幕、接口和机器里的其余部分。";
 "hero.rails" = "四路合计 %@";
-"install.dragInstead" = "请在「访达」里把 PWE MAC MONITOR 拖进「应用程序」文件夹。";
+"install.dragInstead" = "请在「访达」里把 PWE Monitor 拖进「应用程序」文件夹。";
 "install.failed" = "无法移动 App";
 "install.fromDisk" = "App 正在从磁盘映像运行。移到「应用程序」之后才能长期安装、自我更新并开机启动。";
 "install.fromElsewhere" = "放进「应用程序」才能开机启动,也不会一直留在「下载」文件夹里。";
 "install.move" = "移到「应用程序」";
 "install.notNow" = "暂不";
-"install.title" = "把 PWE MAC MONITOR 移到「应用程序」文件夹?";
+"install.title" = "把 PWE Monitor 移到「应用程序」文件夹?";
 "lang.system" = "跟随系统";
 "menu.activity" = "打开「活动监视器」";
 "menu.copy" = "复制诊断信息";
@@ -60,7 +60,7 @@
 "menu.language" = "语言";
 "menu.login" = "开机启动";
 "menu.open" = "打开面板";
-"menu.quit" = "退出 PWE MAC MONITOR";
+"menu.quit" = "退出 PWE Monitor";
 "menu.refresh" = "刷新间隔";
 "menu.sections" = "面板内容";
 "menu.sensors" = "全部传感器";
@@ -120,3 +120,26 @@
 "verdict.lowPower" = "低电量模式";
 "verdict.more" = " · 另有 %d 项";
 "verdict.one" = "%1$@%2$@ · 已达上限 %3$d%%";
+
+/* Updates — the only outgoing request this app makes. */
+"menu.updates" = "检查更新…";
+"menu.updateReady" = "下载 %@ 版…";
+"menu.updatesAuto" = "自动检查";
+"update.ready" = "%@ 版已发布。";
+"update.youHave" = "你现在用的是 %@。";
+"update.download" = "下载";
+"update.later" = "以后";
+"update.current" = "PWE Monitor 已是最新版本。";
+"update.currentVersion" = "%@ 版";
+"update.unreachable" = "连不上 pwestudio.site。";
+"update.tryAgain" = "检查一下网络再试一次,或者直接打开下载页。";
+"update.openPage" = "打开下载页";
+"update.ok" = "好";
+
+/* 1.4.0 改名后,清理叫旧名字的那一份。 */
+"rename.title" = "还装着一份叫 PWE MAC MONITOR 的旧副本。";
+"rename.body" = "这个 app 现在叫 PWE Monitor。两份副本用的是同一个身份,macOS 就分不清登录时该启动哪一个。把旧的那份移到废纸篓就好了,你设置过的东西一样不会丢。";
+"rename.trash" = "把旧副本移到废纸篓";
+"rename.keep" = "两份都留着";
+"rename.failed" = "没能移走旧副本";
+"rename.dragInstead" = "请在「访达」的「应用程序」里,把 PWE MAC MONITOR 拖进废纸篓。";

@@ -46,7 +46,7 @@ For rendering either language without touching your own setting — `-language` 
 `UserDefaults`' argument domain:
 
 ```bash
-"build/PWE MAC MONITOR.app/Contents/MacOS/pwemon" --snapshot docs --demo -language zh-Hans
+"build/PWE Monitor.app/Contents/MacOS/pwemon" --snapshot docs --demo -language zh-Hans
 ```
 
 ## Three traps

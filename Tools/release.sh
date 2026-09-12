@@ -93,6 +93,13 @@ gh auth status >/dev/null 2>&1 || { echo "✗ gh is not authenticated (run: gh a
 echo "✓ gh authenticated"
 
 echo
+echo "── self-checks ───────────────────────────────────────────"
+# The update check is the only outgoing request this app makes, and what it does not send is
+# printed in the app and on the download page. Gate that promise the way the build gates a
+# missing translation: before anything is built to ship.
+./build.sh >/dev/null
+"build/PWE Monitor.app/Contents/MacOS/pwemon" --updatecheck | sed 's/^/  /'
+
 echo "── version $VERSION ──────────────────────────────────────"
 BUILD_NUMBER=$(( $(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" Resources/Info.plist) + 1 ))
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" Resources/Info.plist
@@ -130,16 +137,16 @@ echo "── publish ───────────────────�
 sed -i '' -E "s/^  version \".*\"/  version \"$VERSION\"/; s/^  sha256 \".*\"/  sha256 \"$SHA\"/" Casks/pwe-mac-monitor.rb
 git add -A
 git commit -q -m "Release $VERSION"
-git tag -a "v$VERSION" -m "PWE MAC MONITOR $VERSION"
+git tag -a "v$VERSION" -m "PWE Monitor $VERSION"
 git push -q origin main
 git push -q origin "v$VERSION"
 echo "✓ tagged v$VERSION"
 
 gh release create "v$VERSION" "$DMG" build/SHA256SUMS.txt \
-  --repo "$REPO" --title "PWE MAC MONITOR $VERSION" --generate-notes \
+  --repo "$REPO" --title "PWE Monitor $VERSION" --generate-notes \
   --notes-start-tag "$(git describe --tags --abbrev=0 "v$VERSION^" 2>/dev/null || echo "v$VERSION")" \
   || gh release create "v$VERSION" "$DMG" build/SHA256SUMS.txt \
-       --repo "$REPO" --title "PWE MAC MONITOR $VERSION" --generate-notes
+       --repo "$REPO" --title "PWE Monitor $VERSION" --generate-notes
 echo "✓ release published"
 
 TAP_DIR=$(mktemp -d)

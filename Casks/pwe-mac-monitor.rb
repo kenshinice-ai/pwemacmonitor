@@ -1,4 +1,4 @@
-# Homebrew cask for PWE MAC MONITOR.
+# Homebrew cask for PWE Monitor (the token stays `pwe-mac-monitor` — it is an address).
 #
 # This file is ready to publish as a personal tap. To set one up:
 #
@@ -17,14 +17,16 @@ cask "pwe-mac-monitor" do
   sha256 "8d221e98ee495bf09b7d47bb9014e6fc6c5c6c60a166e831df10e387a55d99fa"
 
   url "https://github.com/kenshinice-ai/pwemacmonitor/releases/download/v#{version}/PWE-MAC-MONITOR-#{version}.dmg"
-  name "PWE MAC MONITOR"
+  name "PWE Monitor"
   desc "Menu-bar hardware monitor for Apple Silicon Macs"
   homepage "https://github.com/kenshinice-ai/pwemacmonitor"
 
   depends_on macos: :sonoma
   depends_on arch: :arm64
 
-  app "PWE MAC MONITOR.app"
+  # Renamed in 1.4.0. An upgrade from an older cask removes the old bundle, because Homebrew
+  # uninstalls using the definition saved at install time — which still names the old app.
+  app "PWE Monitor.app"
 
   # This one lives in the menu bar and is therefore almost always running when an upgrade
   # arrives. Without this, brew replaces the bundle underneath the running process: the old

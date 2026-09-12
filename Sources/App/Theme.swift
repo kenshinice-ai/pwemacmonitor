@@ -68,52 +68,69 @@ enum Theme {
     static func seriesSecondary(_ dark: Bool) -> Color { series(0, dark) }
     static func healthNS(_ h: Health, dark: Bool) -> NSColor { NSColor(health(h, dark: dark)) }
 
-    // MARK: Type (section 6) — Playfair Display for the brand voice, Inter for the interface.
-    // Both ship inside the bundle as variable fonts, so the app never depends on installed fonts.
-    private static func variable(_ family: String, size: CGFloat, weight: CGFloat, fallback: NSFont) -> NSFont {
-        let wght = 0x77676874 as CFNumber   // 'wght'
-        let desc = NSFontDescriptor(fontAttributes: [
-            .family: family,
-            NSFontDescriptor.AttributeName(kCTFontVariationAttribute as String): [wght: weight],
-        ])
-        return NSFont(descriptor: desc, size: size) ?? fallback
+    // MARK: Type — the platform's own face, at the platform's own sizes.
+    //
+    // Until 1.3.0 this shipped Inter and Playfair Display inside the bundle and drew the whole
+    // interface in them. Three things were wrong with that, and the third is decisive:
+    //
+    //   · SF Pro changes shape with size (Text below 20 pt, Display above) and carries Apple's
+    //     own tracking tables. A single static face gets that wrong at both ends.
+    //   · A bundled face does not participate in the reader's text-size setting.
+    //   · **Inter has no CJK glyphs.** Every Chinese string in this bilingual app was already
+    //     being drawn by the system's fallback — so the "brand face" only ever reached half the
+    //     readers, and the half it missed got no weight matching from the `wght` axis either.
+    //     Asking for the system font gets PingFang matched to SF Pro's weights, which is the
+    //     behaviour the brand standard §7.2 spent a page describing and could not implement.
+    //
+    // Planning doc 17 §4.2. Playfair survives in one place only, and it is not this app: the
+    // Paradise Production seal on the film line.
+    private static func face(_ size: CGFloat, _ weight: CGFloat) -> NSFont {
+        .systemFont(ofSize: size, weight: nsWeight(weight))
     }
 
-    /// Playfair Display — headings and the wordmark.
-    static func serif(_ size: CGFloat, _ weight: CGFloat = 500) -> Font {
-        Font(variable("Playfair Display", size: size, weight: weight,
-                      fallback: .systemFont(ofSize: size, weight: .medium)))
+    /// The 100–900 numbers the call sites use, mapped onto the platform's named weights.
+    private static func nsWeight(_ weight: CGFloat) -> NSFont.Weight {
+        switch weight {
+        case ..<350:  return .light
+        case ..<450:  return .regular
+        case ..<550:  return .medium
+        case ..<650:  return .semibold
+        default:      return .bold
+        }
     }
-    /// Inter — all interface text.
-    static func ui(_ size: CGFloat, _ weight: CGFloat = 400) -> Font {
-        Font(variable("Inter", size: size, weight: weight,
-                      fallback: .systemFont(ofSize: size, weight: weight >= 600 ? .semibold : weight >= 500 ? .medium : .regular)))
-    }
-    /// Inter with tabular figures, for anything that changes every refresh.
-    static func number(_ size: CGFloat, _ weight: CGFloat = 500) -> Font {
-        let base = variable("Inter", size: size, weight: weight, fallback: .monospacedDigitSystemFont(ofSize: size, weight: .medium))
-        let desc = base.fontDescriptor.addingAttributes([
-            .featureSettings: [[NSFontDescriptor.FeatureKey.typeIdentifier: kNumberSpacingType,
-                                NSFontDescriptor.FeatureKey.selectorIdentifier: kMonospacedNumbersSelector]],
-        ])
-        return Font(NSFont(descriptor: desc, size: size) ?? base)
-    }
-    /// Small-caps section label, and the one place the identity standard needs a second exception.
+
+    /// The wordmark and anything that speaks as the product rather than as a readout.
     ///
-    /// Standard §6 sets Inter Semibold at +0.18em tracking, which is a rule about Latin small
-    /// caps: Han has no small caps, and letterspacing it at that ratio reads as a defect rather
-    /// than as emphasis. 8.5 pt is also a size below what Apple ships as "mini", tolerable for
-    /// Latin caps and not for PingFang. Recorded as §7.2 衍生字体例外.
+    /// Named for its job, not its face. It used to be Playfair Display and the name `serif` said
+    /// so; a helper whose name describes the file it loads is a helper that lies the moment the
+    /// file changes.
+    static func wordmark(_ size: CGFloat, _ weight: CGFloat = 600) -> Font {
+        Font(face(size, weight))
+    }
+
+    /// All interface text.
+    static func ui(_ size: CGFloat, _ weight: CGFloat = 400) -> Font { Font(face(size, weight)) }
+
+    /// Tabular figures, for anything that changes every refresh. A digit that changes width
+    /// makes the column beside it jump, which reads as the number being unstable rather than the
+    /// layout.
+    static func number(_ size: CGFloat, _ weight: CGFloat = 500) -> Font {
+        Font(NSFont.monospacedDigitSystemFont(ofSize: size, weight: nsWeight(weight)))
+    }
+
+    /// Small-caps section label, and the one place the identity standard needs an exception.
+    ///
+    /// Standard §6 sets Semibold at +0.18em tracking, which is a rule about Latin small caps:
+    /// Han has no small caps, and letterspacing it at that ratio reads as a defect rather than
+    /// as emphasis. 8.5 pt is also below what Apple ships as "mini" — tolerable for Latin caps
+    /// and not for PingFang. Recorded as §7.2 衍生字体例外.
     static func label(_ size: CGFloat = 8.5) -> Font { ui(Loc.isCJK ? size + 1 : size, 600) }
     static func labelTracking(_ t: CGFloat) -> CGFloat { Loc.isCJK ? t * 0.4 : t }
 
+    /// The menu-bar glyph's figures. Drawn with AppKit rather than SwiftUI, so it needs the
+    /// `NSFont` rather than the `Font`.
     static func nsNumber(_ size: CGFloat, _ weight: CGFloat = 500) -> NSFont {
-        let base = variable("Inter", size: size, weight: weight, fallback: .monospacedDigitSystemFont(ofSize: size, weight: .medium))
-        let desc = base.fontDescriptor.addingAttributes([
-            .featureSettings: [[NSFontDescriptor.FeatureKey.typeIdentifier: kNumberSpacingType,
-                                NSFontDescriptor.FeatureKey.selectorIdentifier: kMonospacedNumbersSelector]],
-        ])
-        return NSFont(descriptor: desc, size: size) ?? base
+        .monospacedDigitSystemFont(ofSize: size, weight: nsWeight(weight))
     }
 }
 

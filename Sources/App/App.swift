@@ -19,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var statusItem: NSStatusItem!
     private var popover: NSPopover!
     private var monitor: Monitor!
+    private let updater = UpdateCheck()
 
     private var appearanceObserver: NSKeyValueObservation?
 
@@ -30,7 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             b.action = #selector(click(_:))
             b.sendAction(on: [.leftMouseUp, .rightMouseUp])
             b.imagePosition = .imageOnly
-            b.toolTip = "PWE MAC MONITOR"
+            b.toolTip = "PWE Monitor"
         }
         popover = NSPopover()
         popover.behavior = .transient
@@ -51,12 +52,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         refreshIcon()
         if !CommandLine.arguments.contains("--snapshot"), !CommandLine.arguments.contains("--popover-test"),
-           !CommandLine.arguments.contains("--wing-states"), !CommandLine.arguments.contains("--bench-icon") {
+           !CommandLine.arguments.contains("--wing-states"), !CommandLine.arguments.contains("--bench-icon"),
+           !CommandLine.arguments.contains("--updatecheck") {
             Install.offerToInstallIfNeeded()
+            Install.offerToRemovePredecessorIfNeeded()
+        }
+        // After the interface is up, and never during a snapshot run: a screenshot must not
+        // depend on what a server says today.
+        if !CommandLine.arguments.contains("--snapshot"), !CommandLine.arguments.contains("--updatecheck") {
+            Task { [weak self] in
+                guard let self else { return }
+                await self.updater.checkIfDue(enabled: self.monitor.updateChecks)
+                self.refreshIcon()
+            }
         }
         if CommandLine.arguments.contains("--open") { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.openPopover() } }
         if CommandLine.arguments.contains("--popover-test") { runPopoverTest() }
         if CommandLine.arguments.contains("--bench-icon") { WingStatesCheck.bench(); NSApp.terminate(nil) }
+        if CommandLine.arguments.contains("--updatecheck") { exit(UpdateCheckSelfTest.run()) }
         if let i = CommandLine.arguments.firstIndex(of: "--wing-states"), i + 1 < CommandLine.arguments.count {
             WingStatesCheck.write(to: CommandLine.arguments[i + 1])
             NSApp.terminate(nil)
@@ -284,15 +297,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         copy.target = self
 
         menu.addItem(.separator())
-        let updates = menu.addItem(withTitle: L("menu.updates", "Check for Updates…"), action: #selector(openReleases), keyEquivalent: "")
+        // Two items, because they answer two different questions. The first is "is there a
+        // newer one" — asked now, by someone who asked. Pressing it is that check's consent, so
+        // it needs no switch in front of it. The second is "tell me without my asking", which
+        // does, and is off until it is turned on.
+        //
+        // Until 1.3.0 the first item opened the GitHub releases page and left the reader to
+        // compare version numbers. That is a link, not a check.
+        let updates = menu.addItem(
+            withTitle: updater.available.map {
+                String(format: L("menu.updateReady", "Download version %@…"), $0.version)
+            } ?? L("menu.updates", "Check for Updates…"),
+            action: #selector(checkForUpdates), keyEquivalent: "")
         updates.target = self
+        let autoUpdates = menu.addItem(withTitle: L("menu.updatesAuto", "Check automatically"),
+                                       action: #selector(toggleUpdateChecks), keyEquivalent: "")
+        autoUpdates.state = monitor.updateChecks ? .on : .off
+        autoUpdates.target = self
         let source = menu.addItem(withTitle: L("menu.source", "Source Code on GitHub"), action: #selector(openRepository), keyEquivalent: "")
         source.target = self
         let version = menu.addItem(withTitle: String(format: L("menu.version", "Version %@"), Install.version), action: nil, keyEquivalent: "")
         version.isEnabled = false
 
         menu.addItem(.separator())
-        let quit = menu.addItem(withTitle: L("menu.quit", "Quit PWE MAC MONITOR"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        let quit = menu.addItem(withTitle: L("menu.quit", "Quit PWE Monitor"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         quit.target = NSApp
         return menu
     }
@@ -308,7 +336,59 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         default: break
         }
     }
-    @objc private func openReleases() { NSWorkspace.shared.open(Install.releasesURL) }
+    @objc private func toggleUpdateChecks() {
+        monitor.updateChecks.toggle()
+        if monitor.updateChecks { Task { await updater.check() } }
+    }
+
+    /// The manual check. Always says something — an answer that arrives silently is
+    /// indistinguishable from a menu item that does nothing.
+    @objc private func checkForUpdates() {
+        if let release = updater.available { return present(release) }
+        Task { @MainActor in
+            let answered = await updater.check()
+            NSApp.activate(ignoringOtherApps: true)
+            if let release = updater.available { return present(release) }
+            let alert = NSAlert()
+            alert.alertStyle = .informational
+            if answered {
+                alert.messageText = L("update.current", "PWE Monitor is up to date.")
+                alert.informativeText = String(format: L("update.currentVersion", "Version %@"),
+                                               UpdateCheck.currentVersion)
+            } else {
+                alert.messageText = L("update.unreachable", "Could not reach pwestudio.site.")
+                // One line: loccheck scans for `L("key", "English")` within a line, so a call
+                // wrapped across two is a key it never sees and therefore never gates.
+                alert.informativeText = L("update.tryAgain", "Check your connection and try again, or open the download page.")
+                alert.addButton(withTitle: L("update.openPage", "Open Download Page"))
+                alert.addButton(withTitle: L("update.ok", "OK"))
+                if alert.runModal() == .alertFirstButtonReturn {
+                    NSWorkspace.shared.open(UpdateCheck.downloadPage)
+                }
+                return
+            }
+            alert.runModal()
+        }
+    }
+
+    @MainActor private func present(_ release: UpdateCheck.Release) {
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = String(format: L("update.ready", "Version %@ is out."), release.version)
+        alert.informativeText = release.notes
+            ?? String(format: L("update.youHave", "You have %@."), UpdateCheck.currentVersion)
+        // A button, not a command. Someone who has to be told to open Terminal and type
+        // `brew upgrade` is someone who stays on the version with the bug.
+        alert.addButton(withTitle: L("update.download", "Download"))
+        alert.addButton(withTitle: L("update.later", "Later"))
+        if alert.runModal() == .alertFirstButtonReturn {
+            NSWorkspace.shared.open(UpdateCheck.downloadPage)
+        } else {
+            updater.dismiss()
+        }
+    }
+
     @objc private func openRepository() { NSWorkspace.shared.open(Install.repositoryURL) }
     @objc private func toggleLaunchAtLogin() { monitor.launchAtLogin.toggle() }
     @objc private func setMode(_ item: NSMenuItem) {
@@ -329,7 +409,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     /// the JSON already use.
     @objc private func copyDiagnostics() {
         guard let soc = monitor.soc else { return }
-        let text = "PWE MAC MONITOR \(Install.version) · macOS \(ProcessInfo.processInfo.operatingSystemVersionString)\n"
+        let text = "PWE Monitor \(Install.version) · macOS \(ProcessInfo.processInfo.operatingSystemVersionString)\n"
             + CLI.summary(monitor.snap, soc: soc)
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)

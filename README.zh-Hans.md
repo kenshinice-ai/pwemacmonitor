@@ -1,6 +1,6 @@
 <div align="center">
 
-# PWE MAC MONITOR
+# PWE Monitor
 
 **Apple 芯片 Mac 的菜单栏硬件监视器。**
 一个自包含的 App —— 不装 Homebrew,没有后台守护进程,不需要任何运行时。
@@ -106,7 +106,7 @@ English 与简体中文。默认跟随你的 Mac;设置菜单里的**语言**可
 ### 下载
 
 1. 从[最新发布](https://github.com/kenshinice-ai/pwemacmonitor/releases/latest)取 `.dmg`。
-2. 把 **PWE MAC MONITOR** 拖进**应用程序**。
+2. 把 **PWE Monitor** 拖进**应用程序**。
 3. 打开它。它没有窗口 —— 在菜单栏里找那个羽翼。
 
 ### Homebrew
@@ -155,8 +155,8 @@ Intel 硬件上不存在这些计数器。
 ## 命令行
 
 ```bash
-"/Applications/PWE MAC MONITOR.app/Contents/MacOS/pwemon" --probe        # 人类可读的一次读数
-"/Applications/PWE MAC MONITOR.app/Contents/MacOS/pwemon" --json --loop  # 每行一个 JSON,持续输出
+"/Applications/PWE Monitor.app/Contents/MacOS/pwemon" --probe        # 人类可读的一次读数
+"/Applications/PWE Monitor.app/Contents/MacOS/pwemon" --json --loop  # 每行一个 JSON,持续输出
 ```
 
 这两个输出是机器接口,固定为英文。

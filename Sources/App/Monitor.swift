@@ -22,7 +22,7 @@ enum AppError {
     var message: String {
         switch self {
         case .noAppleSilicon:
-            return L("error.hardware", "Hardware sources unavailable — PWE MAC MONITOR needs an Apple Silicon Mac.")
+            return L("error.hardware", "Hardware sources unavailable — PWE Monitor needs an Apple Silicon Mac.")
         case .launchAtLogin:
             return L("error.login", "Could not set launch at login — move the app to /Applications and try again.")
         }
@@ -75,6 +75,9 @@ final class Monitor: ObservableObject {
 
     private func section(_ key: String, _ on: Bool) { defaults.set(on, forKey: "section." + key); bump() }
     @Published var launchAtLogin: Bool { didSet { applyLaunchAtLogin() } }
+    /// Whether the app may ask the site once a day whether a newer version exists. Off until it
+    /// is turned on; pressing "Check for Updates…" is a separate, one-off consent.
+    @Published var updateChecks: Bool { didSet { defaults.set(updateChecks, forKey: "updateChecks") } }
     @Published var language: Language {
         didSet { defaults.set(language.rawValue, forKey: "language"); Loc.language = language; onUpdate?(); bump() }
     }
@@ -123,6 +126,7 @@ final class Monitor: ObservableObject {
         showStorageNetwork = storedSection("storageNetwork")
         showProcesses = storedSection("processes")
         launchAtLogin = SMAppService.mainApp.status == .enabled
+        updateChecks = defaults.bool(forKey: "updateChecks")
         // Through a local: the compiler will not let `Loc` read back `self.language` until every
         // stored property is up, and the string tables have to be pointed at the right language
         // before anything below builds a label out of them.

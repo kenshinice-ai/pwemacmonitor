@@ -1,6 +1,6 @@
 # Third-party notices
 
-PWE MAC MONITOR bundles or derives from the following third-party work. Full licence texts are in
+PWE Monitor bundles or derives from the following third-party work. Full licence texts are in
 [`licenses/`](licenses/).
 
 ---
@@ -16,23 +16,6 @@ DVFS frequency tables — is a Swift port of macmon's Rust implementation. The c
 out there first, and this port would not have been feasible without that source to read.
 
 Copyright (c) 2024 vladkens · MIT Licence · [`licenses/macmon-MIT.txt`](licenses/macmon-MIT.txt)
-
-## Inter — SIL Open Font License 1.1
-
-`Resources/Fonts/Inter.ttf`, used for all interface text and bundled unmodified inside the
-application.
-
-Copyright 2016 The Inter Project Authors (<https://github.com/rsms/inter>)
-[`licenses/SIL-OFL-1.1.txt`](licenses/SIL-OFL-1.1.txt)
-
-## Playfair Display — SIL Open Font License 1.1
-
-`Resources/Fonts/PlayfairDisplay.ttf`, used for headings and the wordmark, bundled unmodified.
-"Playfair Display" is a Reserved Font Name.
-
-Copyright 2017 The Playfair Display Project Authors
-(<https://github.com/clauseggers/Playfair-Display>)
-[`licenses/SIL-OFL-1.1.txt`](licenses/SIL-OFL-1.1.txt)
 
 ---
 

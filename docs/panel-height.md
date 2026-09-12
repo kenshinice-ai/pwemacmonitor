@@ -201,7 +201,7 @@ already governs its row, for a net +34.
 Card and content heights, from a render rather than from the source:
 
 ```bash
-"build/PWE MAC MONITOR.app/Contents/MacOS/pwemon" --snapshot docs --demo
+"build/PWE Monitor.app/Contents/MacOS/pwemon" --snapshot docs --demo
 ```
 
 `--snapshot` prints the first-pass height against the settled one — they must be equal, or the

@@ -1,6 +1,6 @@
 <div align="center">
 
-# PWE MAC MONITOR
+# PWE Monitor
 
 **A menu-bar hardware monitor for Apple Silicon Macs.**
 One self-contained app — no Homebrew, no helper processes, no runtime to install.
@@ -120,7 +120,7 @@ carry separate verdicts, because it is the hottest one that throttles.
 ### Download
 
 1. Grab the `.dmg` from the [latest release](https://github.com/kenshinice-ai/pwemacmonitor/releases/latest).
-2. Drag **PWE MAC MONITOR** onto **Applications**.
+2. Drag **PWE Monitor** onto **Applications**.
 3. Open it. There is no window — look for the wing in your menu bar.
 
 ### Homebrew
@@ -186,7 +186,7 @@ The only requirement is the Xcode Command Line Tools (`xcode-select --install`).
 project and no package manager — `build.sh` calls `swiftc` directly and assembles the bundle.
 
 ```bash
-./build.sh            # build/PWE MAC MONITOR.app
+./build.sh            # build/PWE Monitor.app
 ./build.sh --run      # build, then launch
 ./build.sh --dmg      # build, then package a disk image
 ```
@@ -232,7 +232,7 @@ longer touches releases at all.
 The same binary is a CLI:
 
 ```bash
-"/Applications/PWE MAC MONITOR.app/Contents/MacOS/pwemon" --probe
+"/Applications/PWE Monitor.app/Contents/MacOS/pwemon" --probe
 ```
 
 ```
@@ -301,8 +301,8 @@ window is 89 samples — the integer approximation of φ that the wing's own arm
 ### Development tools
 
 ```bash
-"build/PWE MAC MONITOR.app/Contents/MacOS/pwemon" --snapshot docs          # render the UI to PNG
-"build/PWE MAC MONITOR.app/Contents/MacOS/pwemon" --popover-test           # popover sizing check
+"build/PWE Monitor.app/Contents/MacOS/pwemon" --snapshot docs          # render the UI to PNG
+"build/PWE Monitor.app/Contents/MacOS/pwemon" --popover-test           # popover sizing check
 swiftc -O Sources/Core/*.swift Tools/thresholds/main.swift -o /tmp/t && /tmp/t   # threshold sweep
 swiftc -O Tools/loccheck/main.swift -o /tmp/l && /tmp/l .                   # string tables
 ```
