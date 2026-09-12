@@ -98,7 +98,11 @@ codesign --verify --deep --strict "$APP"
 
 # Hand the finished bundle back to the project directory for convenience.
 rm -rf "build/$APP_NAME.app"
-ditto "$APP" "build/$APP_NAME.app"
+# Stripped at copy time, like every other ditto in this script: `build/` is inside iCloud Drive,
+# and a plain copy brings com.apple.FinderInfo with it — after which `codesign --verify` on the
+# copy fails with "detritus not allowed" even though the bundle it came from is perfectly signed.
+# Found while giving PWE Lumen Bar the same copy-back step; this one had been wrong all along.
+ditto --norsrc --noextattr --noacl "$APP" "build/$APP_NAME.app"
 echo "✓ build/$APP_NAME.app"
 
 if [[ "${1:-}" == "--run" ]]; then
