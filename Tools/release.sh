@@ -127,8 +127,14 @@ grep -q "source=Notarized Developer ID" <<<"$VERDICT" || {
 xcrun stapler validate "$DMG" >/dev/null && echo "✓ notarisation ticket stapled to the disk image"
 
 MOUNT=$(hdiutil attach -nobrowse -readonly "$DMG" | awk -F'\t' '/\/Volumes\//{print $NF}' | tail -1)
-spctl -a -vv "$MOUNT/PWE MAC MONITOR.app"
-xcrun stapler validate "$MOUNT/PWE MAC MONITOR.app" >/dev/null && echo "✓ ticket stapled to the app"
+# Whatever the disk image actually contains, rather than a name spelled here. The 1.4.0 rename
+# stopped this script dead at exactly this line — which is the good failure, but a verification
+# step that has to be edited whenever the product is renamed is a step that will eventually be
+# edited wrongly.
+APP_IN_DMG=$(find "$MOUNT" -maxdepth 1 -name "*.app" | head -1)
+[[ -n "$APP_IN_DMG" ]] || { echo "✗ no .app inside the disk image"; exit 1; }
+spctl -a -vv "$APP_IN_DMG"
+xcrun stapler validate "$APP_IN_DMG" >/dev/null && echo "✓ ticket stapled to the app"
 hdiutil detach "$MOUNT" -quiet
 MOUNT=""
 
