@@ -93,6 +93,15 @@ gh auth status >/dev/null 2>&1 || { echo "✗ gh is not authenticated (run: gh a
 echo "✓ gh authenticated"
 
 echo
+# The other apps carry a copy of UpdateCheck — three repositories, three build systems, nowhere
+# shared to put it. This is the one thing that duplication actually costs: nobody being told when
+# a fix reaches one copy and not the others. Skipped quietly when the file is not beside this app,
+# so a lone clone can still cut a release.
+if [[ -x ../check-shared-sources.py ]]; then
+  echo "== shared sources =========================================="
+  ../check-shared-sources.py || exit 1
+fi
+
 echo "── self-checks ───────────────────────────────────────────"
 # The update check is the only outgoing request this app makes, and what it does not send is
 # printed in the app and on the download page. Gate that promise the way the build gates a
