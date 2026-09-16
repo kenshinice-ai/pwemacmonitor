@@ -102,6 +102,12 @@ if [[ -x ../check-shared-sources.py ]]; then
   ../check-shared-sources.py || exit 1
 fi
 
+# iCloud writes "Forecast 2.swift" beside "Forecast.swift" and nothing warns; a published tag
+# once carried fourteen of them. Same "skip quietly when absent" rule as above.
+if [[ -x ../check-icloud-copies.py ]]; then
+  ../check-icloud-copies.py . || exit 1
+fi
+
 echo "── self-checks ───────────────────────────────────────────"
 # The update check is the only outgoing request this app makes, and what it does not send is
 # printed in the app and on the download page. Gate that promise the way the build gates a
