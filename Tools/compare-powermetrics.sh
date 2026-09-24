@@ -23,9 +23,15 @@ PM=(sudo powermetrics)
 
 [[ -z "${POWERMETRICS:-}" ]] && sudo -v     # ask for the password before anything starts
 
+# The load generators are killed by PID. `trap 'kill $(jobs -p)' EXIT` looked right and killed
+# nothing — the command substitution runs in a subshell that has no jobs — so the first run of
+# this script left sixteen `yes` processes pinning every core after it exited.
+LOAD=()
+cleanup() { (( ${#LOAD} )) && kill "${LOAD[@]}" 2>/dev/null; rm -rf "$TMP"; }
+trap cleanup EXIT
+trap 'exit 130' INT TERM
 if [[ "${1:-}" == "--load" ]]; then
-  for i in $(seq 1 "$(sysctl -n hw.logicalcpu)"); do yes >/dev/null & done
-  trap 'kill $(jobs -p) 2>/dev/null' EXIT
+  for i in $(seq 1 "$(sysctl -n hw.logicalcpu)"); do yes >/dev/null & LOAD+=($!); done
   sleep 3
 fi
 
@@ -34,7 +40,12 @@ fi
 PM_PID=$!
 "$APP" --json --loop 2>/dev/null | head -n "$N" \
   | python3 -c 'import json,sys
-for l in sys.stdin: d=json.loads(l); print(d["cpu"]["power_w"], d["power"]["cpu_source"])' > "$TMP/app"
+for l in sys.stdin: d=json.loads(l); print(d["cpu"]["power_w"], d["power"]["cpu_source"])' > "$TMP/app" &
+# Waited on rather than run in the foreground: zsh defers a trap until a foreground job ends, so
+# Ctrl-C used to leave every core pinned for up to twelve more seconds. `wait` is interruptible.
+APP_PID=$!
+LOAD+=($APP_PID $PM_PID)
+wait "$APP_PID" 2>/dev/null || true
 wait "$PM_PID" 2>/dev/null || true
 [[ -s "$TMP/pm" ]] || echo "! powermetrics printed no 'CPU Power' lines — its output format may have changed"
 
@@ -50,4 +61,3 @@ for p, (a, src) in zip(pm, app):
 mp, ma = sum(pm[:n]) / n, sum(float(a) for a, _ in app[:n]) / n
 print(f"{'mean':>4} {mp:6.2f} W  {ma:10.2f} W  ({(ma / mp - 1) * 100:+.1f} %)" if mp else "")
 PY
-rm -rf "$TMP"
