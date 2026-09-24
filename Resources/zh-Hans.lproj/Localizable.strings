@@ -48,8 +48,8 @@
 "hero.building" = "累积中 %1$d/%2$d";
 "hero.gpuOnly" = "GPU %@";
 "hero.power" = "功耗";
-"hero.powerHelp" = "整机系统电源轨。「四路合计」是下方 CPU / GPU / ANE / DRAM 四条计算电源轨之和,两者之差是屏幕、接口和机器里的其余部分。";
-"hero.rails" = "四路合计 %@";
+"hero.powerHelp" = "整机系统电源轨。「电源轨」是下方所画各条计算电源轨之和,两者之差是屏幕、接口和机器里的其余部分。";
+"hero.rails" = "电源轨 %@";
 "install.dragInstead" = "请在「访达」里把 PWE Monitor 拖进「应用程序」文件夹。";
 "install.failed" = "无法移动 App";
 "install.fromDisk" = "App 正在从磁盘映像运行。移到「应用程序」之后才能长期安装、自我更新并开机启动。";
@@ -111,8 +111,6 @@
 "section.processes" = "进程占用";
 "section.storage" = "存储";
 "section.thermals" = "温度";
-"silicon.railNote" = "仅计算电源轨 —— 系统功耗还包含屏幕与接口";
-"silicon.railsUnavailable" = "此版本 macOS 不再向应用提供 CPU、神经网络引擎与 DRAM 的能耗读数 —— 只有 GPU 电源轨可读";
 "thermal.critical" = "正在强制降温";
 "thermal.fair" = "略高";
 "thermal.nominal" = "正常";

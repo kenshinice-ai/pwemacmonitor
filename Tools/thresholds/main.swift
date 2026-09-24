@@ -111,6 +111,14 @@ print(String(format: "── fill at thermalState critical:   %.4f  (must be 1.0
 require(abs(fWarm - 0.72) < 1e-9, "warm anchor moved")
 require(abs(fCrit - 1.0) < 1e-9, "critical no longer fills the feather")
 
+// ── the cluster-histogram reduction behind CPU power on macOS 27 ──
+// States are named by their upper edge; a band counts at its midpoint. Two equal residencies in
+// the first two 0.25 W bands must average 0.25 W, and a label that is not a wattage is skipped.
+let (w1, t1) = Sampler.clusterWatts([(" 0.250W", 10), (" 0.500W", 10), ("OFF", 99)])
+require(abs(w1 / t1 - 0.25) < 1e-9 && t1 == 20, "cluster histogram: expected 0.25 W over 20 ticks, got \(w1 / t1) over \(t1)")
+let (w2, t2) = Sampler.clusterWatts([("   2W", 0), ("   4W", 5), ("   6W", 5)])
+require(abs(w2 / t2 - 4) < 1e-9, "cluster histogram: 2 W bands, expected 4 W, got \(w2 / t2)")
+
 print(bad == 0 ? "✓ \(checked) assertions, magnitudes capped and verdicts intact"
                : "✗ \(bad) failures out of \(checked)")
 exit(bad == 0 ? 0 : 1)

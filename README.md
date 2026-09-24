@@ -37,8 +37,12 @@ Everything on one page, refreshed every 1–5 seconds.
 
 Two of these are worth calling out, because most menu-bar monitors do not have them:
 
-- **Neural Engine and DRAM power.** The stacked rail under the core row shows where the chip's watts
-  actually go — CPU, GPU, ANE, DRAM — read from IOReport's energy model rather than estimated.
+- **Where the chip's watts go.** The stacked rail under the core row splits compute power by rail —
+  CPU, GPU, and on macOS 26 and earlier the Neural Engine and DRAM too — read from Apple's own
+  counters rather than estimated. macOS 27 updates the CPU, ANE and DRAM energy counters only every
+  few minutes; the CPU rail is recovered from the per-cluster power histograms, which still update
+  every second, and ANE and DRAM are left out rather than shown as zero.
+  [How, and how it was checked](docs/power-rails.md).
 - **Per-core residency.** Each bar is one physical core, frequency-weighted, with the efficiency and
   performance clusters distinguished. Hover a bar for its exact frequency.
 

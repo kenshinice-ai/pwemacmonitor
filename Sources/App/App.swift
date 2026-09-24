@@ -444,10 +444,12 @@ enum CLI {
             "cpu": ["usage": s.cpuUsage, "active": s.cpuActive, "ecpu_mhz": s.ecpuFreq, "pcpu_mhz": s.pcpuFreq, "temp_avg": s.cpuTemp, "temp_max": s.cpuTempMax, "power_w": s.cpuPower,
                     "cores": s.cores.map { ["id": $0.id, "p": $0.isP, "mhz": $0.freqMHz, "usage": $0.scaled] }],
             "gpu": ["usage": s.gpuUsage, "mhz": s.gpuFreq, "temp": s.gpuTemp, "power_w": s.gpuPower],
-            // `rails_readable` is additive — no existing field changes meaning — and it is the only way
-            // a script can tell "0 W" from "this macOS does not report it".
+            // `rails_readable`: all four rails are measured this sample. `cpu_source` says where
+            // cpu.power_w came from — the Energy Model counter, the PMP cluster histograms that
+            // macOS 27 still updates every second, or nowhere. Both additive.
             "power": ["sys_w": s.sysPower, "ane_w": s.anePower, "ram_w": s.ramPower, "all_w": s.allPower,
-                      "rails_readable": s.railsReadable],
+                      "rails_readable": s.cpuPowerReadable && s.aneDramReadable,
+                      "cpu_source": s.cpuPowerSource.rawValue],
             "ssd": ["temp": s.ssdTemp, "read_bps": s.diskReadPerSec, "write_bps": s.diskWritePerSec, "total": s.disk.total, "free": s.disk.free],
             "fans": s.fans.map { ["name": $0.id, "rpm": $0.rpm, "max_rpm": $0.maxRPM ?? 0] },
             "memory": ["total": s.memory.total, "used": s.memory.used, "wired": s.memory.wired, "compressed": s.memory.compressed, "swap_used": s.memory.swapUsed, "pressure": s.memory.pressure],

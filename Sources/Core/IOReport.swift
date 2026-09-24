@@ -38,12 +38,25 @@ final class IOReport {
     private var prev: (CFDictionary, TimeInterval)?
 
     static func channelFilter(group: String, subgroup: String, channel: String) -> Bool {
+        // Per-cluster power histograms. On macOS 27 the Energy Model's millijoule counters land in
+        // batches every three to five minutes; these still advance every second. See
+        // `Sampler.clusterWatts` and docs/power-rails.md.
+        if group == "PMP" && subgroup == "Energy" { return Self.isClusterHistogram(channel) }
         if group == "Energy Model" {
             return channel == "GPU Energy" || channel.hasSuffix("CPU Energy")
                 || channel.hasPrefix("ANE") || channel.hasPrefix("DRAM") || channel.hasPrefix("GPU SRAM")
         }
         if group == "CPU Stats" { return subgroup == "CPU Core Performance States" }
         return group == "GPU Stats" && subgroup == "GPU Performance States"
+    }
+
+    /// `EACC0`, `PACC1`, `MACC0` — a CPU cluster's power histogram. Not its `… SRAM` companion:
+    /// calibrated against the GPU, whose nanojoule counter still works, the primary histogram alone
+    /// matched the counter to 0.5 % under load, and adding its SRAM twin overshot.
+    static func isClusterHistogram(_ channel: String) -> Bool {
+        guard channel.count >= 5, !channel.contains("SRAM") else { return false }
+        let head = channel.prefix(4)
+        return (head == "EACC" || head == "PACC" || head == "MACC") && channel.dropFirst(4).allSatisfy(\.isNumber)
     }
 
     init?() {

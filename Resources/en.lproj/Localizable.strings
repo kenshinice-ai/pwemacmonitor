@@ -39,7 +39,7 @@
 "hero.building" = "building %1$d/%2$d";
 "hero.gpuOnly" = "GPU %@";
 "hero.power" = "POWER";
-"hero.powerHelp" = "The system rail. 'rails' is the four compute rails below it — the rest is display, ports and everything else in the machine.";
+"hero.powerHelp" = "The system rail. 'rails' is the sum of the compute rails drawn below it — the rest is display, ports and everything else in the machine.";
 "hero.rails" = "rails %@";
 "install.dragInstead" = "Drag PWE Monitor to your Applications folder in Finder instead.";
 "install.failed" = "Could not move the app";
@@ -101,8 +101,6 @@
 "section.processes" = "Top Processes";
 "section.storage" = "Storage";
 "section.thermals" = "Thermals";
-"silicon.railNote" = "compute rails only — the system figure also covers display and ports";
-"silicon.railsUnavailable" = "this version of macOS reports no CPU, Neural Engine or DRAM energy to apps — only the GPU rail is live";
 "thermal.critical" = "Cooling down";
 "thermal.fair" = "Slightly elevated";
 "thermal.nominal" = "Nominal";

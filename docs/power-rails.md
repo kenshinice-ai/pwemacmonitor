@@ -39,25 +39,53 @@ warm, so none of these is ever coral: a busy core is working, not failing.
 The one amber that is not status is the selected refresh-interval chip. It is a control state,
 not a reading, and stays.
 
-## macOS 27 reports no CPU, ANE or DRAM energy
+## macOS 27: the counters arrive in batches, and the CPU comes back from histograms
 
-Measured 2026-09-24 on an M4 Max, macOS 27.0. Subscribing to the whole `Energy Model` group gives
-328 channels — the aggregate `CPU Energy`, every per-cluster `EACC_CPU*` / `PACC*_CPU*`, the
-`ECPUDTL*` / `PCPUDTL*` detail channels, `ANE`, `DRAM`, `GPU SRAM` — and every millijoule channel
-reads zero over any window, one second or six, idle or with every core pinned. Only `GPU Energy`,
-the one channel in nanojoules, still advances. On macOS 26 the same code read the CPU rail at
-1.3–3.1 W.
+**What changed.** On macOS 27 the Energy Model's millijoule counters — `CPU Energy`, every
+per-cluster `EACC_CPU*` / `PACC*_CPU*`, `ANE`, `DRAM`, `GPU SRAM` — no longer advance per sample.
+They land in batches: zero, zero, zero, then minutes of energy at once. On this M4 Max the
+batches came 6 to 14 minutes apart (one carried 9,100 J). Only `GPU Energy`, the one nanojoule
+channel, still advances every second. The same failure is open against the other tools that read
+IOReport: macmon ([#76](https://github.com/vladkens/macmon/issues/76)) and Stats
+([#3608](https://github.com/exelban/stats/issues/3608)). Across all 12,192 IOReport channels,
+subscribed either way the open tools do, `GPU Energy` is the only energy-unit counter that moves.
 
-A sweep of all 67 floating-point `P*` keys in the SMC under a CPU-only load found none that tracks
-CPU power (the largest rise was 0.09 W). `PSTR`, the whole-system figure the hero prints, is
-unaffected.
+1.5.0 got this half right: it saw zeros and printed "—". But it treated "has ever moved" as live,
+so the first batch — several minutes of energy over a two-second interval — would have drawn a
+spike of a hundred watts or more, then gone back to zero.
 
-What the panel does about it: `Snapshot.railsReadable` becomes true the first time the CPU
-counter moves — a running CPU never draws exactly nothing over an interval — and until then the
-CPU, ANE and DRAM legends read "—", the hero's second figure reads `GPU 0.5 W` instead of
-`rails 0.5 W`, and the note under the bar says the rails are not reported. On a macOS that does
-report them the flag flips on the first real sample and nothing else changes. `--json` gains
-`power.rails_readable`, so a script can tell a zero from an absence.
+**What still updates every second.** The `PMP` group's `Energy` subgroup holds a power histogram
+per cluster: `EACC0` (E-cluster, 32 bands of 0.25 W), `PACC0` / `PACC1` (P-clusters, 32 bands of
+2 W), `AGX` (GPU, 2 W), each with a `… SRAM` twin. A cluster that is powered down logs no
+residency, so the bands' total understates the interval; the shared tick clock (about 4.4 kHz
+here) is learned as the fastest total seen, and the missing residency counts as 0 W.
 
-Not established: whether the counters are withheld from unprivileged processes only (`powermetrics`
-runs as root) or gone entirely. That needs a root read to settle, which this app will not do.
+`Sampler.clusterWatts` takes each band at its midpoint (the states are named by upper edge) and
+sums the primary histograms, not the SRAM twins. That rule was settled on the GPU, the one rail
+where both a histogram and a working counter exist:
+
+| GPU | Counter | Histogram, midpoint, no SRAM |
+|---|---|---|
+| Idle | 0.39 W | 1.35 W |
+| Full compute load | 46.52 W | **46.30 W** (−0.5 %) |
+
+Under load it is exact to half a percent. At idle it reads high by up to half a band — the
+lowest band is 0–2 W and counts as 1 W — and no arithmetic can recover resolution the histogram
+does not have. The E-cluster's bands are 0.25 W, so it is eight times finer.
+
+**What the panel does.** Per sample: the Energy Model's CPU counter counts as live only if it
+moved this sample *and* the last — a running CPU never draws nothing over an interval, and a
+batch after zeros is minutes of energy, so it is discarded. Live, the counter is used as before,
+ANE and DRAM with it. Not live, CPU power comes from the cluster histograms, and ANE and DRAM —
+which have no histogram — are left off the bar and the legend rather than shown as zero.
+`--json` reports `power.cpu_source` (`energy_model`, `pmp_histogram` or `none`) and
+`power.rails_readable` (all four rails measured this sample).
+
+The footnote that used to sit under the bar is gone; what the rails cover is in the POWER
+column's hover.
+
+**Checking the CPU figure.** The GPU calibration settles the method; the CPU's own reference is
+`powermetrics`, which runs only as root. `Tools/compare-powermetrics.sh` asks for the password once
+and prints the two side by side, second by second — add `--load` to pin every core while it runs.
+Waiting on the Energy Model's own batches as a reference was tried and dropped: they arrive 6 to
+14 minutes apart, so one comparison costs half an hour.

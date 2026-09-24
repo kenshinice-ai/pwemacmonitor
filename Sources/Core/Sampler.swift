@@ -82,6 +82,14 @@ enum ThermalState: Int, Comparable, CaseIterable {
     }
 }
 
+enum PowerSource: String {
+    /// The Energy Model's CPU counter, advancing every sample — exact, and what macOS 26 gives.
+    case energyModel = "energy_model"
+    /// The PMP per-cluster power histograms — what macOS 27 still updates every second.
+    case clusterHistogram = "pmp_histogram"
+    case none
+}
+
 /// What this Mac physically has. Decided once, from the hardware, and never from a sample.
 ///
 /// A desktop has no battery and an Air has no fans, for the life of the machine — a card for
@@ -194,13 +202,12 @@ struct Snapshot {
     /// `--json` surface, so it is left alone; but the figure printed beside the rail legend has to
     /// equal the four bars underneath it or the card contradicts itself in front of the reader.
     var railPower: Double { cpuPower + gpuPower + anePower + ramPower }
-    /// Whether the CPU, ANE and DRAM energy counters have ever moved. On macOS 27 every one of
-    /// IOReport's millijoule Energy Model channels — 328 of them on an M4 Max, the per-cluster
-    /// ones included — reads zero to an ordinary process, and only the GPU's nanojoule counter
-    /// still advances. A CPU at 100 % was being printed as "CPU 0.0 W". A running CPU never
-    /// draws exactly nothing over a sampling interval, so a counter that has never moved is a
-    /// counter that is not being reported, and the panel says so instead of printing a zero.
-    var railsReadable = false
+    /// Where `cpuPower` came from this sample, if anywhere. See `Sampler.energyModelLive`.
+    var cpuPowerSource = PowerSource.none
+    /// ANE and DRAM exist only as Energy Model counters. When those are not advancing every
+    /// sample, both read zero and the panel leaves the two rails out rather than print a zero.
+    var aneDramReadable = false
+    var cpuPowerReadable: Bool { cpuPowerSource != .none }
     // Thermals (°C)
     var cpuTemp = 0.0, cpuTempMax = 0.0, gpuTemp = 0.0, ssdTemp = 0.0, batteryTemp = 0.0
     var sensors: [Sensor] = []
@@ -396,8 +403,18 @@ final class Sampler {
     let soc: SocInfo
     /// See `Hardware`. Read in `init` and never again.
     private(set) var hardware = Hardware.laptop
-    /// Sticky: see `Snapshot.railsReadable`.
-    private var sawCPUEnergy = false
+    /// Whether the Energy Model's millijoule counters are advancing *every* sample.
+    ///
+    /// On macOS 27 they land in batches every three to five minutes: zero, zero, zero, then several
+    /// minutes of energy at once. Divided by a two-second interval that batch is a spike of a
+    /// hundred watts or more, so "has it ever moved" is not enough — 1.5.0 used exactly that and
+    /// would have drawn the spike, then gone back to zero. A running CPU never draws nothing over
+    /// an interval, so the counter counts as live only when it moved this sample *and* the last.
+    private var cpuEnergyMovedLastSample = false
+    /// Histogram ticks per second, learned as the fastest seen. A cluster that is powered down
+    /// logs no residency at all, so a histogram's own total understates the interval; the rate is
+    /// the clock every histogram shares, and residency missing from it is time spent at 0 W.
+    private var histogramTickRate = 0.0
     private let ioreport: IOReport?
     private let smc: SMC?
     private let hid: IOHIDSensors?
@@ -508,6 +525,8 @@ final class Sampler {
 
         if let ioreport, let sample = ioreport.sampleSincePrevious() {
             var cores: [CoreMetric] = []
+            var emCPU = 0.0, emANE = 0.0, emDRAM = 0.0
+            var clusterEnergy = 0.0, clusterTicks = 0.0, sawCluster = false
             for ch in sample.channels {
                 switch (ch.group, ch.subgroup) {
                 case ("CPU Stats", "CPU Core Performance States"):
@@ -522,11 +541,26 @@ final class Sampler {
                 case ("Energy Model", _):
                     let w = ioreport.watts(ch, elapsed: sample.elapsed)
                     if ch.name == "GPU Energy" { s.gpuPower += w }
-                    else if ch.name.hasSuffix("CPU Energy") { s.cpuPower += w }
-                    else if ch.name.hasPrefix("ANE") { s.anePower += w }
-                    else if ch.name.hasPrefix("DRAM") { s.ramPower += w }
+                    else if ch.name.hasSuffix("CPU Energy") { emCPU += w }
+                    else if ch.name.hasPrefix("ANE") { emANE += w }
+                    else if ch.name.hasPrefix("DRAM") { emDRAM += w }
+                case ("PMP", "Energy") where IOReport.isClusterHistogram(ch.name):
+                    let (joulesTicks, ticks) = Self.clusterWatts(ioreport.residencies(ch.item))
+                    clusterEnergy += joulesTicks; sawCluster = true
+                    clusterTicks = max(clusterTicks, ticks)
                 default: break
                 }
+            }
+            // The Energy Model when it is live; the cluster histograms when it is not.
+            let live = emCPU > 0 && cpuEnergyMovedLastSample
+            cpuEnergyMovedLastSample = emCPU > 0
+            histogramTickRate = max(histogramTickRate, clusterTicks / sample.elapsed)
+            if live {
+                s.cpuPower = emCPU; s.cpuPowerSource = .energyModel
+                s.anePower = emANE; s.ramPower = emDRAM; s.aneDramReadable = true
+            } else if sawCluster, histogramTickRate > 0 {
+                s.cpuPower = clusterEnergy / (histogramTickRate * sample.elapsed)
+                s.cpuPowerSource = .clusterHistogram
             }
             cores.sort { Self.coreSortKey($0.id) < Self.coreSortKey($1.id) }
             s.cores = cores
@@ -595,8 +629,7 @@ final class Sampler {
         s.ssdTemp = ssdT.max() ?? 0
         s.sensors = sensors.sorted { ($0.name, $0.id) < ($1.name, $1.id) }
         s.sysPower = max(s.sysPower, s.allPower)
-        if s.cpuPower > 0 { sawCPUEnergy = true }
-        s.railsReadable = sawCPUEnergy
+
         s.thermal = ThermalState(ProcessInfo.processInfo.thermalState)
         s.lowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
 
@@ -658,6 +691,23 @@ final class Sampler {
         guard let peak = temps.max() else { return 0 }
         let live = temps.filter { $0 >= peak - 15 }
         return zeroDiv(live.reduce(0, +), Double(live.count))
+    }
+
+    /// A PMP cluster histogram, reduced to watt-ticks and ticks. Each state is a power band named
+    /// by its upper edge — " 0.250W", "   2W" — so a band's value is the midpoint between its edge
+    /// and the one below. Calibrated on the GPU histogram against the GPU's still-working energy
+    /// counter: 46.30 W against 46.52 under load. At idle the midpoint of the lowest band dominates
+    /// and reads high — half a band, so up to 1 W on a P-cluster — which is the resolution the
+    /// histogram has, not an error the arithmetic can remove.
+    static func clusterWatts(_ states: [(String, Int64)]) -> (Double, Double) {
+        var lower = 0.0, weighted = 0.0, ticks = 0.0
+        for (name, residency) in states {
+            let t = name.trimmingCharacters(in: .whitespaces)
+            guard t.hasSuffix("W"), let upper = Double(t.dropLast()) else { continue }
+            let r = Double(residency)
+            weighted += r * (lower + upper) / 2; ticks += r; lower = upper
+        }
+        return (weighted, ticks)
     }
 
     private static func coreSortKey(_ ch: String) -> (Int, Int, Int, Int) {

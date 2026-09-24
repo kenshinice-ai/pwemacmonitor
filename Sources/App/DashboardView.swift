@@ -133,10 +133,10 @@ struct DashboardView: View {
                 // directly below add up to exactly this number, and a reader who checks is
                 // entitled to find that they do. `allPower` omits DRAM and stays the JSON's.
                 heroStat(L("hero.power", "POWER"), Fmt.watts(s.sysPower),
-                         s.railsReadable ? String(format: L("hero.rails", "rails %@"), Fmt.watts(s.railPower))
-                                         : String(format: L("hero.gpuOnly", "GPU %@"), Fmt.watts(s.gpuPower)), nil, .calm,
+                         s.cpuPowerReadable ? String(format: L("hero.rails", "rails %@"), Fmt.watts(s.railPower))
+                                            : String(format: L("hero.gpuOnly", "GPU %@"), Fmt.watts(s.gpuPower)), nil, .calm,
                          monitor.powerHealth, monitor.history["power"] ?? [], ceiling: nil,
-                         help: L("hero.powerHelp", "The system rail. 'rails' is the four compute rails below it — the rest is display, ports and everything else in the machine."))
+                         help: L("hero.powerHelp", "The system rail. 'rails' is the sum of the compute rails drawn below it — the rest is display, ports and everything else in the machine."))
             }
         }
     }
@@ -393,44 +393,53 @@ struct DashboardView: View {
                 // rank, whatever it drew; now each rail keeps its own ink, and CPU and GPU take
                 // the same load colour as the numbers in the hero above, so the two can never
                 // disagree. ANE and DRAM have no load reading and stay ink.
-                // Where macOS reports no CPU/ANE/DRAM energy, those three read "—" and only the
-                // GPU segment is drawn; see `Snapshot.railsReadable`.
-                let rails: [(String, Double, Color)] = [
-                    ("CPU", s.cpuPower, loadColor(busy(s.cpuLoadHealth), calm: Theme.series(0, dark))),
-                    ("GPU", s.gpuPower, loadColor(busy(s.gpuLoadHealth), calm: Theme.series(1, dark))),
-                    ("ANE", s.anePower, Theme.series(2, dark)),
-                    ("DRAM", s.ramPower, Theme.series(3, dark)),
-                ]
+                //
+                // Only rails that are being measured this sample. On macOS 27 the CPU comes from
+                // the cluster power histograms, and ANE and DRAM — which exist only as Energy
+                // Model counters that now arrive every few minutes — are left out rather than
+                // printed as zero. The legend is one line either way, so the card's height holds.
+                let rails = measuredRails
                 let scale = max(Snapshot.powerEnvelope(soc?.chipClass ?? "Base"), s.railPower, 0.001)
                 StackedBar(parts: rails.map { ($0.1, $0.2) }, total: scale, dark: dark)
                 HStack(spacing: Theme.s3) {
                     ForEach(rails, id: \.0) { rail in
-                        legend(rail.0, rail.2, s.railsReadable || rail.0 == "GPU" ? Fmt.watts(rail.1) : "—")
+                        legend(rail.0, rail.2, Fmt.watts(rail.1))
                     }
                     Spacer(minLength: 0)
                 }
-                // Say what these four watts are and are not. Without it the card shows a figure
-                // well under the system rail printed two inches above and leaves the reader to
-                // guess whether one of them is wrong.
-                Text(s.railsReadable
-                     ? L("silicon.railNote", "compute rails only — the system figure also covers display and ports")
-                     : L("silicon.railsUnavailable", "this version of macOS reports no CPU, Neural Engine or DRAM energy to apps — only the GPU rail is live"))
-                    .font(Theme.ui(8)).foregroundStyle(Theme.muted(dark))
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                // No footnote under the bar. What the rails cover and why they differ from the
+                // system figure is in the POWER column's hover, where it is asked for; printed
+                // permanently it was a sentence nobody needed twice.
             }
         }
+    }
+
+    private var measuredRails: [(String, Double, Color)] {
+        var rails: [(String, Double, Color)] = []
+        if s.cpuPowerReadable {
+            rails.append(("CPU", s.cpuPower, loadColor(busy(s.cpuLoadHealth), calm: Theme.series(0, dark))))
+        }
+        rails.append(("GPU", s.gpuPower, loadColor(busy(s.gpuLoadHealth), calm: Theme.series(1, dark))))
+        if s.aneDramReadable {
+            rails.append(("ANE", s.anePower, Theme.series(2, dark)))
+            rails.append(("DRAM", s.ramPower, Theme.series(3, dark)))
+        }
+        return rails
     }
 
     /// A composition segment: its identity ink while calm, the status colour once its own reading
     /// says it is working hard. Load is capped at warm by `busy`, so this is never coral.
     private func loadColor(_ h: Health, calm: Color) -> Color { h == .calm ? calm : Theme.health(h, dark: dark) }
 
-    /// Per core, on the thresholds `cpuLoadHealth` uses for the whole chip, so a core bar and the
-    /// CPU figure above it grade the same way. P-cores are the darker ink; the cluster gap does
-    /// the rest of the telling apart.
+    /// A core bar is coloured only when the chip as a whole is working hard *and* that core is
+    /// one of the ones carrying it (≥ 85 %). The bars elaborate the CPU figure above them; they do
+    /// not get a verdict of their own. Graded per core alone at 55 %, the E-cluster sat amber most
+    /// of the day — macOS parks background work there at full clock by design, which is the
+    /// cluster doing its job, not the machine under load. P-cores are the darker ink; the cluster
+    /// gap does the rest of the telling apart.
     private func coreColor(_ c: CoreMetric) -> Color {
-        loadColor(busy(Health.grade(c.scaled, warm: 0.55, hot: 0.85)), calm: Theme.series(c.isP ? 0 : 1, dark))
+        let carrying = busy(s.cpuLoadHealth) == .warm && c.scaled >= 0.85
+        return carrying ? Theme.health(.warm, dark: dark) : Theme.series(c.isP ? 0 : 1, dark)
     }
 
     private func legend(_ title: String, _ color: Color, _ value: String) -> some View {
