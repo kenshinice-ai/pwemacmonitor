@@ -8,14 +8,20 @@
 # on macOS 27 it reads CPU power from the PMP cluster histograms because the Energy Model
 # counters arrive in batches every several minutes (docs/power-rails.md). powermetrics is the
 # reference those histograms have to agree with.
-set -euo pipefail
+set -eu
+# No pipefail: `pwemon --json --loop | head` ends with head closing the pipe, pwemon takes SIGPIPE,
+# and pipefail would call that a failure — the first version of this script exited silently there,
+# right after the password, before printing anything.
 cd "$(dirname "$0")/.."
 APP="build/PWE Monitor.app/Contents/MacOS/pwemon"
 [[ -x "$APP" ]] || { echo "build first: ./build.sh"; exit 1; }
 N=12
 TMP=$(mktemp -d)
+# Stand-in for testing the plumbing without root: POWERMETRICS="…" replaces `sudo powermetrics`.
+PM=(sudo powermetrics)
+[[ -n "${POWERMETRICS:-}" ]] && PM=(${=POWERMETRICS})
 
-sudo -v                                    # ask for the password before anything starts
+[[ -z "${POWERMETRICS:-}" ]] && sudo -v     # ask for the password before anything starts
 
 if [[ "${1:-}" == "--load" ]]; then
   for i in $(seq 1 "$(sysctl -n hw.logicalcpu)"); do yes >/dev/null & done
@@ -23,12 +29,14 @@ if [[ "${1:-}" == "--load" ]]; then
   sleep 3
 fi
 
-sudo powermetrics --samplers cpu_power -i 1000 -n "$N" 2>/dev/null \
+"${PM[@]}" --samplers cpu_power -i 1000 -n "$N" 2>/dev/null \
   | awk '/^CPU Power/ {print $3 / 1000}' > "$TMP/pm" &
+PM_PID=$!
 "$APP" --json --loop 2>/dev/null | head -n "$N" \
   | python3 -c 'import json,sys
 for l in sys.stdin: d=json.loads(l); print(d["cpu"]["power_w"], d["power"]["cpu_source"])' > "$TMP/app"
-wait %1 2>/dev/null || true
+wait "$PM_PID" 2>/dev/null || true
+[[ -s "$TMP/pm" ]] || echo "! powermetrics printed no 'CPU Power' lines — its output format may have changed"
 
 python3 - "$TMP/pm" "$TMP/app" <<'PY'
 import sys
