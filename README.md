@@ -68,9 +68,20 @@ Left-click opens the dashboard. Right-click opens settings.
 | <img src="docs/menubar-compact-dark.png" width="150"> | **Power + temperature** |
 | <img src="docs/menubar-full-dark.png" width="200"> | **CPU + power + temperature** |
 
-The settings menu also carries **Refresh Every** (1–5 s), **Panel Sections** — thermals & memory,
-fans & battery, storage & network, top processes, and the ~200-key PMU sensor dump, each switchable
-and remembered — **Launch at Login**, **Language**, **Open Activity Monitor** — seeing which process is
+### It fits the Mac it is on
+
+The cards are decided by what the machine has, once, at launch: a Mac mini, Studio or iMac has no
+battery card and no battery row in THERMALS; a MacBook Air has no fans card. Whatever is left is
+paired two to a row and a card left over spans the row — so no Mac carries a card that says "none"
+for its whole life, and switching a card off in **Panel Sections** reflows the rest rather than
+leaving a hole.
+
+| MacBook Pro | Mac mini · Studio · iMac | MacBook Air |
+|---|---|---|
+| <img src="docs/dashboard-dark.png" width="220"> | <img src="docs/dashboard-desktop-dark.png" width="220"> | <img src="docs/dashboard-fanless-dark.png" width="220"> |
+
+The settings menu also carries **Refresh Every** (1–5 s), **Panel Sections** — every card, and the
+~200-key PMU sensor dump, each switchable and remembered — **Launch at Login**, **Language**, **Open Activity Monitor** — seeing which process is
 pegging a core is half the job, and this app deliberately cannot kill anything — and **Copy
 Diagnostics**, which puts the `--probe` reading plus the version and OS build on the clipboard for
 a bug report.
@@ -92,6 +103,8 @@ work, and the three traps that produced bugs, is in `docs/localisation.md`](docs
 layouts costed against it, is in `docs/panel-height.md`](docs/panel-height.md).
 [Why a magnitude may not turn the panel red, with the
 measurements behind it, is in `docs/thermal-verdict.md`](docs/thermal-verdict.md).
+[How the power rails are scaled and coloured, and what
+macOS 27 stopped reporting, is in `docs/power-rails.md`](docs/power-rails.md).
 
 When nothing is wrong the mark is drawn solid, exactly as the brand standard draws it.
 

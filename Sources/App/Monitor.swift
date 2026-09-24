@@ -61,19 +61,24 @@ final class Monitor: ObservableObject {
     @Published var menuBarMode: MenuBarMode { didSet { defaults.set(menuBarMode.rawValue, forKey: "menuBarMode"); onUpdate?() } }
     @Published var showSensors: Bool { didSet { defaults.set(showSensors, forKey: "showSensors"); syncSensorPanel(); bump() } }
 
-    /// Which sections the panel draws. The unit is a **grid row**, not a card, and that is not a
-    /// simplification: a `GridRow` takes the height of its taller card, so hiding one card of a
-    /// pair reclaims nothing at all. Grouped by row, hiding one is worth 105–174 pt.
+    /// Cards switched off in Panel Sections. Per card rather than per grid row since 1.5.0: the
+    /// grid now pairs whatever is left, so hiding one card reflows the others and reclaims its
+    /// row — under the fixed pairing it only left a padded hole beside its partner, which is
+    /// why 1.3.0 grouped the switches by row.
     ///
-    /// They live in the settings menu rather than as chevrons on the panel, which keeps the resting
-    /// interface unchanged and costs no height — and it is the pattern `showSensors` has used since
-    /// 1.0 without confusing anyone.
-    @Published var showThermalMemory: Bool { didSet { section("thermalMemory", showThermalMemory) } }
-    @Published var showFansBattery: Bool { didSet { section("fansBattery", showFansBattery) } }
-    @Published var showStorageNetwork: Bool { didSet { section("storageNetwork", showStorageNetwork) } }
-    @Published var showProcesses: Bool { didSet { section("processes", showProcesses) } }
+    /// Settings menu rather than chevrons on the panel: the resting interface is unchanged, it
+    /// costs no height, and it is the pattern `showSensors` has used since 1.0.
+    @Published var hiddenCards: Set<PanelCard> {
+        didSet { defaults.set(hiddenCards.map(\.rawValue).sorted(), forKey: "hiddenCards"); bump() }
+    }
+    /// What the machine has. Fixed at launch — see `Hardware`.
+    let hardware: Hardware
 
-    private func section(_ key: String, _ on: Bool) { defaults.set(on, forKey: "section." + key); bump() }
+    /// Present on this Mac and not switched off.
+    func shows(_ card: PanelCard) -> Bool { hardware.has(card) && !hiddenCards.contains(card) }
+    func toggle(_ card: PanelCard) {
+        if hiddenCards.contains(card) { hiddenCards.remove(card) } else { hiddenCards.insert(card) }
+    }
     @Published var launchAtLogin: Bool { didSet { applyLaunchAtLogin() } }
     /// Whether the app may ask the site once a day whether a newer version exists. Off until it
     /// is turned on; pressing "Check for Updates…" is a separate, one-off consent.
@@ -113,18 +118,7 @@ final class Monitor: ObservableObject {
         interval = [1.0, 2.0, 3.0, 5.0].contains(stored) ? stored : 2
         menuBarMode = MenuBarMode(rawValue: defaults.string(forKey: "menuBarMode") ?? "") ?? .full
         showSensors = defaults.bool(forKey: "showSensors")
-        // An absent key reads as false through `bool(forKey:)`, which would ship every section
-        // switched off on first launch.
-        // `UserDefaults.standard` rather than `self.defaults`, and a name apart from the instance
-        // method: touching either would be using `self` before every stored property is up.
-        // `object(forKey:)`, not `bool(forKey:)` — see below.
-        func storedSection(_ key: String) -> Bool {
-            UserDefaults.standard.object(forKey: "section." + key) as? Bool ?? true
-        }
-        showThermalMemory = storedSection("thermalMemory")
-        showFansBattery = storedSection("fansBattery")
-        showStorageNetwork = storedSection("storageNetwork")
-        showProcesses = storedSection("processes")
+        hiddenCards = Monitor.storedHiddenCards()
         launchAtLogin = SMAppService.mainApp.status == .enabled
         updateChecks = defaults.bool(forKey: "updateChecks")
         // Through a local: the compiler will not let `Loc` read back `self.language` until every
@@ -135,8 +129,37 @@ final class Monitor: ObservableObject {
         Loc.language = lang
         sampler = Sampler()
         soc = sampler?.soc
+        hardware = Monitor.hardwareOverride() ?? sampler?.hardware ?? .laptop
         if sampler == nil { error = .noAppleSilicon }
         restart()
+    }
+
+    /// 1.3.0 stored switches per grid row under `section.*`. Carried across once, card by card,
+    /// so nobody who turned a row off finds it back after upgrading.
+    private static func storedHiddenCards() -> Set<PanelCard> {
+        let d = UserDefaults.standard
+        if let saved = d.stringArray(forKey: "hiddenCards") {
+            return Set(saved.compactMap(PanelCard.init(rawValue:)))
+        }
+        var hidden: Set<PanelCard> = []
+        let rows: [(String, [PanelCard])] = [("thermalMemory", [.thermals, .memory]), ("fansBattery", [.fans, .battery]),
+                                             ("storageNetwork", [.storage, .network]), ("processes", [.processes])]
+        for (key, cards) in rows where d.object(forKey: "section." + key) as? Bool == false {
+            hidden.formUnion(cards)
+        }
+        return hidden
+    }
+
+    /// `PWEMON_HARDWARE=desktop` or `=fanless` renders another machine's layout on this one, for
+    /// the documentation screenshots and for checking a layout that no Mac at hand can produce.
+    /// Only the card set changes; every reading is still this machine's.
+    private static func hardwareOverride() -> Hardware? {
+        switch ProcessInfo.processInfo.environment["PWEMON_HARDWARE"] {
+        case "desktop": return Hardware(hasBattery: false, hasFans: true)
+        case "fanless": return Hardware(hasBattery: true, hasFans: false)
+        case "laptop":  return .laptop
+        default: return nil
+        }
     }
 
     var overall: Health { snap.overall(chipClass: soc?.chipClass ?? "Base") }

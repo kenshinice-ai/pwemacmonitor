@@ -266,16 +266,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         menu.setSubmenu(languages, for: menu.addItem(withTitle: L("menu.language", "Language"), action: nil, keyEquivalent: ""))
 
-        // Panel sections. The unit is a grid row rather than a card because a GridRow takes the
-        // height of its taller card — hiding one of a pair reclaims nothing.
+        // Panel sections, one per card. Only the cards this Mac has: offering "Battery" on a Mac
+        // Studio would be a switch that does nothing.
         let sections = NSMenu()
-        for (key, title, on) in [
-            ("thermalMemory", L("section.thermalMemory", "Thermals & Memory"), monitor.showThermalMemory),
-            ("fansBattery", L("section.fansBattery", "Fans & Battery"), monitor.showFansBattery),
-            ("storageNetwork", L("section.storageNetwork", "Storage & Network"), monitor.showStorageNetwork),
-            ("processes", L("section.processes", "Top Processes"), monitor.showProcesses),
-            ("sensors", L("menu.sensors", "All Sensors"), monitor.showSensors),
-        ] {
+        let cards = PanelCard.allCases.filter { monitor.hardware.has($0) }
+            .map { ($0.rawValue, $0.title, !monitor.hiddenCards.contains($0)) }
+        for (key, title, on) in cards + [("sensors", L("menu.sensors", "All Sensors"), monitor.showSensors)] {
             let it = sections.addItem(withTitle: title, action: #selector(toggleSection(_:)), keyEquivalent: "")
             it.representedObject = key
             it.state = on ? .on : .off
@@ -327,14 +323,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     @objc private func openFromMenu() { openPopover() }
     @objc private func toggleSection(_ item: NSMenuItem) {
-        switch item.representedObject as? String {
-        case "thermalMemory":  monitor.showThermalMemory.toggle()
-        case "fansBattery":    monitor.showFansBattery.toggle()
-        case "storageNetwork": monitor.showStorageNetwork.toggle()
-        case "processes":      monitor.showProcesses.toggle()
-        case "sensors":        monitor.showSensors.toggle()
-        default: break
-        }
+        guard let key = item.representedObject as? String else { return }
+        if key == "sensors" { monitor.showSensors.toggle() }
+        else if let card = PanelCard(rawValue: key) { monitor.toggle(card) }
     }
     @objc private func toggleUpdateChecks() {
         monitor.updateChecks.toggle()
@@ -453,7 +444,10 @@ enum CLI {
             "cpu": ["usage": s.cpuUsage, "active": s.cpuActive, "ecpu_mhz": s.ecpuFreq, "pcpu_mhz": s.pcpuFreq, "temp_avg": s.cpuTemp, "temp_max": s.cpuTempMax, "power_w": s.cpuPower,
                     "cores": s.cores.map { ["id": $0.id, "p": $0.isP, "mhz": $0.freqMHz, "usage": $0.scaled] }],
             "gpu": ["usage": s.gpuUsage, "mhz": s.gpuFreq, "temp": s.gpuTemp, "power_w": s.gpuPower],
-            "power": ["sys_w": s.sysPower, "ane_w": s.anePower, "ram_w": s.ramPower, "all_w": s.allPower],
+            // `rails_readable` is additive — no existing field changes meaning — and it is the only way
+            // a script can tell "0 W" from "this macOS does not report it".
+            "power": ["sys_w": s.sysPower, "ane_w": s.anePower, "ram_w": s.ramPower, "all_w": s.allPower,
+                      "rails_readable": s.railsReadable],
             "ssd": ["temp": s.ssdTemp, "read_bps": s.diskReadPerSec, "write_bps": s.diskWritePerSec, "total": s.disk.total, "free": s.disk.free],
             "fans": s.fans.map { ["name": $0.id, "rpm": $0.rpm, "max_rpm": $0.maxRPM ?? 0] },
             "memory": ["total": s.memory.total, "used": s.memory.used, "wired": s.memory.wired, "compressed": s.memory.compressed, "swap_used": s.memory.swapUsed, "pressure": s.memory.pressure],

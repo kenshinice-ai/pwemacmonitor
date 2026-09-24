@@ -50,18 +50,25 @@ struct DashboardView: View {
                     // the third, with the shortfall left as a hole under the left column. Pairing
                     // the cards into rows makes every horizontal edge line up and costs no height:
                     // the taller column already set the section's height.
-                    // Paired by meaning: what the chip is doing, how the machine is answering,
-                    // what is moving in and out. This buys no height and was measured rather than
-                    // assumed — a GridRow takes its taller card, the four run 74 / 88 / 89 / 106 pt,
-                    // and no pairing beats 106 + 89. The old order was already at that bound.
-                    if monitor.showThermalMemory || monitor.showFansBattery || monitor.showStorageNetwork {
+                    //
+                    // Since 1.5.0 the pairs are not fixed. The cards this Mac has and the reader
+                    // has not switched off are paired in reading order, and one left over spans
+                    // the row in a wide layout. A Mac Studio has no battery and an Air has no
+                    // fans; under fixed pairs each kept a card of "none" beside its partner for
+                    // the life of the machine.
+                    let rows = gridRows
+                    if !rows.isEmpty {
                         Grid(horizontalSpacing: Theme.s2, verticalSpacing: Theme.s2) {
-                            if monitor.showThermalMemory { GridRow { thermalCard; memory } }
-                            if monitor.showFansBattery { GridRow { fans; battery } }
-                            if monitor.showStorageNetwork { GridRow { storage; network } }
+                            ForEach(rows, id: \.first) { row in
+                                if row.count == 2 {
+                                    GridRow { card(row[0], wide: false); card(row[1], wide: false) }
+                                } else {
+                                    GridRow { card(row[0], wide: true).gridCellColumns(2) }
+                                }
+                            }
                         }
                     }
-                    if monitor.showProcesses { processes }
+                    if monitor.shows(.processes) { processes }
                     if monitor.showSensors { sensors }
                     signature
                 }
@@ -84,10 +91,25 @@ struct DashboardView: View {
         // be there, and a section unfolding is exactly the vestibular movement it means. The
         // state change still happens, so nothing is hidden and no feedback is lost.
         .animation(disclosure, value: monitor.showSensors)
-        .animation(disclosure, value: monitor.showThermalMemory)
-        .animation(disclosure, value: monitor.showFansBattery)
-        .animation(disclosure, value: monitor.showStorageNetwork)
-        .animation(disclosure, value: monitor.showProcesses)
+        .animation(disclosure, value: monitor.hiddenCards)
+    }
+
+    /// The grid cards shown on this Mac, two to a row in reading order.
+    private var gridRows: [[PanelCard]] {
+        let shown = PanelCard.grid.filter(monitor.shows)
+        return stride(from: 0, to: shown.count, by: 2).map { Array(shown[$0..<min($0 + 2, shown.count)]) }
+    }
+
+    @ViewBuilder private func card(_ c: PanelCard, wide: Bool) -> some View {
+        switch c {
+        case .thermals: thermalCard
+        case .memory: memory
+        case .fans: fans(wide: wide)
+        case .battery: battery
+        case .storage: storage
+        case .network: network(wide: wide)
+        case .processes: processes
+        }
     }
 
     private func banner(_ e: String) -> some View {
@@ -111,7 +133,8 @@ struct DashboardView: View {
                 // directly below add up to exactly this number, and a reader who checks is
                 // entitled to find that they do. `allPower` omits DRAM and stays the JSON's.
                 heroStat(L("hero.power", "POWER"), Fmt.watts(s.sysPower),
-                         String(format: L("hero.rails", "rails %@"), Fmt.watts(s.railPower)), nil, .calm,
+                         s.railsReadable ? String(format: L("hero.rails", "rails %@"), Fmt.watts(s.railPower))
+                                         : String(format: L("hero.gpuOnly", "GPU %@"), Fmt.watts(s.gpuPower)), nil, .calm,
                          monitor.powerHealth, monitor.history["power"] ?? [], ceiling: nil,
                          help: L("hero.powerHelp", "The system rail. 'rails' is the four compute rails below it — the rest is display, ports and everything else in the machine."))
             }
@@ -162,7 +185,11 @@ struct DashboardView: View {
                 gauge("SSD", s.ssdTemp, s.ssdTempHealth, limit: 68)
                 // Graded on its own reading, not on `batteryHealth`: that one folds in charge
                 // level, so a nearly flat battery used to turn this temperature row red.
-                gauge(L("row.battery", "Battery"), s.batteryTemp, Health.grade(s.batteryTemp, warm: 38, hot: 42), limit: 42)
+                // Decided by the hardware, not by the reading, so the card's height is fixed for
+                // the life of the machine — a desktop never shows a row of "—" here.
+                if monitor.hardware.hasBattery {
+                    gauge(L("row.battery", "Battery"), s.batteryTemp, Health.grade(s.batteryTemp, warm: 38, hot: 42), limit: 42)
+                }
             }
         }
     }
@@ -200,27 +227,29 @@ struct DashboardView: View {
     }
 
     // MARK: Fans
-    private var fans: some View {
-        Group {
-            Card(dark: dark, title: L("card.fans", "FANS"), fills: true) {
-                if s.fans.isEmpty {
-                    Text(L("value.fanless", "Fanless design")).font(Theme.ui(10)).foregroundStyle(Theme.muted(dark))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                } else {
-                    VStack(spacing: 7) {
-                        ForEach(s.fans) { f in
-                            VStack(spacing: 3) {
-                                HStack(spacing: 4) {
-                                    Text(f.id).font(Theme.ui(10)).foregroundStyle(Theme.muted(dark))
-                                    Spacer(minLength: 0)
-                                    Text(f.rpm == 0 ? L("value.idle", "idle") : "\(f.rpm) rpm").font(Theme.number(10, 600))
-                                }
-                                Bar(value: f.ratio, color: Theme.healthFill(Health.grade(f.ratio, warm: 0.45, hot: 0.8), dark: dark), dark: dark)
-                            }
-                        }
-                    }
-                }
+    /// Only drawn on a Mac that has fans, so an empty list means the first read has not landed.
+    /// Wide — when it is the card left over — the fans sit side by side instead of stacked.
+    private func fans(wide: Bool) -> some View {
+        Card(dark: dark, title: L("card.fans", "FANS"), fills: true) {
+            if s.fans.isEmpty {
+                Text(L("value.reading", "Reading…")).font(Theme.ui(10)).foregroundStyle(Theme.muted(dark))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else if wide {
+                HStack(alignment: .top, spacing: Theme.s3) { ForEach(s.fans) { fanRow($0) } }
+            } else {
+                VStack(spacing: 7) { ForEach(s.fans) { fanRow($0) } }
             }
+        }
+    }
+
+    private func fanRow(_ f: FanMetric) -> some View {
+        VStack(spacing: 3) {
+            HStack(spacing: 4) {
+                Text(f.id).font(Theme.ui(10)).foregroundStyle(Theme.muted(dark))
+                Spacer(minLength: 0)
+                Text(f.rpm == 0 ? L("value.idle", "idle") : "\(f.rpm) rpm").font(Theme.number(10, 600))
+            }
+            Bar(value: f.ratio, color: Theme.healthFill(Health.grade(f.ratio, warm: 0.45, hot: 0.8), dark: dark), dark: dark)
         }
     }
 
@@ -229,8 +258,9 @@ struct DashboardView: View {
         Group {
             Card(dark: dark, title: L("card.battery", "BATTERY"), fills: true) {
                 let b = s.battery
+                // Only drawn on a Mac that has a battery, so this is a read that has not landed.
                 if !b.present {
-                    Text(L("value.noBattery", "No battery")).font(Theme.ui(10)).foregroundStyle(Theme.muted(dark))
+                    Text(L("value.reading", "Reading…")).font(Theme.ui(10)).foregroundStyle(Theme.muted(dark))
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
                     VStack(spacing: 5) {
@@ -257,13 +287,15 @@ struct DashboardView: View {
             VStack(spacing: 5) {
                 Headline(Fmt.gib(m.used), note: String(format: L("value.of", "of %@"), Fmt.gib(m.total)),
                          color: Theme.health(s.memoryHealth, dark: dark), dark: dark)
-                StackedBar(parts: [(Double(m.app), Theme.seriesPrimary(dark)),
-                                   (Double(m.wired), Theme.series(0, dark)),
-                                   (Double(m.compressed), Theme.series(1, dark))],
+                // Ink only. The headline already carries the pressure colour; a permanently amber
+                // App segment said "look here" about memory that was fine.
+                StackedBar(parts: [(Double(m.app), Theme.series(0, dark)),
+                                   (Double(m.wired), Theme.series(1, dark)),
+                                   (Double(m.compressed), Theme.series(2, dark))],
                            total: Double(m.total), dark: dark)
-                kv(L("row.app", "App"), Fmt.gib(m.app), swatch: Theme.seriesPrimary(dark))
-                kv(L("row.wired", "Wired"), Fmt.gib(m.wired), swatch: Theme.series(0, dark))
-                kv(L("row.compressed", "Compressed"), Fmt.gib(m.compressed), swatch: Theme.series(1, dark))
+                kv(L("row.app", "App"), Fmt.gib(m.app), swatch: Theme.series(0, dark))
+                kv(L("row.wired", "Wired"), Fmt.gib(m.wired), swatch: Theme.series(1, dark))
+                kv(L("row.compressed", "Compressed"), Fmt.gib(m.compressed), swatch: Theme.series(2, dark))
                 kv(L("row.cached", "Cached"), Fmt.gib(m.cached))
                 kv(L("row.swap", "Swap"), Fmt.gib(m.swapUsed))
                 kv(L("row.pressure", "Pressure"),
@@ -294,17 +326,23 @@ struct DashboardView: View {
     }
 
     // MARK: Network
-    private var network: some View {
-        Group {
-            Card(dark: dark, title: s.network.primaryInterface.isEmpty ? L("card.network", "NETWORK")
-                     : L("card.network", "NETWORK") + " · \(s.network.primaryInterface.uppercased())",
-                 fills: true) {
-                VStack(spacing: 5) {
-                    kv(L("row.down", "Down"), Fmt.rate(s.netInPerSec))
-                    kv(L("row.up", "Up"), Fmt.rate(s.netOutPerSec))
-                    if !s.network.primaryAddress.isEmpty { kv(L("row.address", "Address"), s.network.primaryAddress) }
-                    kv(L("row.load", "Load"), String(format: "%.1f · %.1f · %.1f", s.loadAvg.0, s.loadAvg.1, s.loadAvg.2))
-                }
+    /// Wide — the card left over on an Air or a desktop — it runs two columns of two.
+    private func network(wide: Bool) -> some View {
+        Card(dark: dark, title: s.network.primaryInterface.isEmpty ? L("card.network", "NETWORK")
+                 : L("card.network", "NETWORK") + " · \(s.network.primaryInterface.uppercased())",
+             fills: true) {
+            let throughput = VStack(spacing: 5) {
+                kv(L("row.down", "Down"), Fmt.rate(s.netInPerSec))
+                kv(L("row.up", "Up"), Fmt.rate(s.netOutPerSec))
+            }
+            let context = VStack(spacing: 5) {
+                if !s.network.primaryAddress.isEmpty { kv(L("row.address", "Address"), s.network.primaryAddress) }
+                kv(L("row.load", "Load"), String(format: "%.1f · %.1f · %.1f", s.loadAvg.0, s.loadAvg.1, s.loadAvg.2))
+            }
+            if wide {
+                HStack(alignment: .top, spacing: Theme.s3) { throughput; context }
+            } else {
+                VStack(spacing: 5) { throughput; context }
             }
         }
     }
@@ -330,7 +368,7 @@ struct DashboardView: View {
                             if i > 0, s.cores[i - 1].isP != c.isP {
                                 Color.clear.frame(width: 6, height: 28)
                             }
-                            CoreBar(ratio: c.scaled, color: c.isP ? Theme.seriesPrimary(dark) : Theme.seriesSecondary(dark), dark: dark)
+                            CoreBar(ratio: c.scaled, color: coreColor(c), dark: dark)
                                 .help(String(format: L("help.core", "%1$@ core %2$@ · %3$@ · %4$@"),
                                              c.isP ? p : e, c.core_label, Fmt.ghz(c.freqMHz), Fmt.pct(c.scaled)))
                         }
@@ -338,8 +376,8 @@ struct DashboardView: View {
                 }
                 .frame(height: 30)
                 HStack(spacing: Theme.s3) {
-                    legend(e, Theme.seriesSecondary(dark), "\(Fmt.ghz(s.ecpuFreq))")
-                    legend(p, Theme.seriesPrimary(dark), "\(Fmt.ghz(s.pcpuFreq))")
+                    legend(e, Theme.series(1, dark), "\(Fmt.ghz(s.ecpuFreq))")
+                    legend(p, Theme.series(0, dark), "\(Fmt.ghz(s.pcpuFreq))")
                     Spacer(minLength: 0)
                 }
 
@@ -347,34 +385,52 @@ struct DashboardView: View {
 
                 // Power rails. The Neural Engine and DRAM figures come from IOReport's energy model
                 // and are the part of an Apple Silicon power budget that most monitors never show.
-                // Reading order is fixed, but the accent follows the watts: under a GPU load the
-                // bar was a long flat grey with a hair of amber on a 0.4 W CPU, which is the exact
-                // opposite of what the bar is for. Amber marks whichever rail the power is going
-                // to; the rest step down the neutral ramp in rank order.
-                let raw = [("CPU", s.cpuPower), ("GPU", s.gpuPower), ("ANE", s.anePower), ("DRAM", s.ramPower)]
-                let rank = Dictionary(uniqueKeysWithValues:
-                    raw.sorted { $0.1 > $1.1 }.enumerated().map { ($0.element.0, $0.offset) })
-                let rails: [(String, Double, Color)] = raw.map { name, watts in
-                    let r = rank[name] ?? 3
-                    return (name, watts, r == 0 ? Theme.seriesPrimary(dark) : Theme.series(r - 1, dark))
-                }
-                let railTotal = max(rails.reduce(0) { $0 + $1.1 }, 0.001)
-                StackedBar(parts: rails.map { ($0.1, $0.2) }, total: railTotal, dark: dark)
+                //
+                // Two things changed in 1.5.0, both of which an idle Mac made obvious. The bar was
+                // scaled to the four rails' own sum, so 0.2 W on the GPU and nothing elsewhere drew
+                // a full bar — idle looked maxed. It is scaled to the chip's envelope now, so its
+                // length is how much of the machine is in use. And the leading rail was amber by
+                // rank, whatever it drew; now each rail keeps its own ink, and CPU and GPU take
+                // the same load colour as the numbers in the hero above, so the two can never
+                // disagree. ANE and DRAM have no load reading and stay ink.
+                // Where macOS reports no CPU/ANE/DRAM energy, those three read "—" and only the
+                // GPU segment is drawn; see `Snapshot.railsReadable`.
+                let rails: [(String, Double, Color)] = [
+                    ("CPU", s.cpuPower, loadColor(busy(s.cpuLoadHealth), calm: Theme.series(0, dark))),
+                    ("GPU", s.gpuPower, loadColor(busy(s.gpuLoadHealth), calm: Theme.series(1, dark))),
+                    ("ANE", s.anePower, Theme.series(2, dark)),
+                    ("DRAM", s.ramPower, Theme.series(3, dark)),
+                ]
+                let scale = max(Snapshot.powerEnvelope(soc?.chipClass ?? "Base"), s.railPower, 0.001)
+                StackedBar(parts: rails.map { ($0.1, $0.2) }, total: scale, dark: dark)
                 HStack(spacing: Theme.s3) {
                     ForEach(rails, id: \.0) { rail in
-                        legend(rail.0, rail.2, Fmt.watts(rail.1))
+                        legend(rail.0, rail.2, s.railsReadable || rail.0 == "GPU" ? Fmt.watts(rail.1) : "—")
                     }
                     Spacer(minLength: 0)
                 }
                 // Say what these four watts are and are not. Without it the card shows a figure
                 // well under the system rail printed two inches above and leaves the reader to
                 // guess whether one of them is wrong.
-                Text(L("silicon.railNote", "compute rails only — the system figure also covers display and ports"))
+                Text(s.railsReadable
+                     ? L("silicon.railNote", "compute rails only — the system figure also covers display and ports")
+                     : L("silicon.railsUnavailable", "this version of macOS reports no CPU, Neural Engine or DRAM energy to apps — only the GPU rail is live"))
                     .font(Theme.ui(8)).foregroundStyle(Theme.muted(dark))
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+    }
+
+    /// A composition segment: its identity ink while calm, the status colour once its own reading
+    /// says it is working hard. Load is capped at warm by `busy`, so this is never coral.
+    private func loadColor(_ h: Health, calm: Color) -> Color { h == .calm ? calm : Theme.health(h, dark: dark) }
+
+    /// Per core, on the thresholds `cpuLoadHealth` uses for the whole chip, so a core bar and the
+    /// CPU figure above it grade the same way. P-cores are the darker ink; the cluster gap does
+    /// the rest of the telling apart.
+    private func coreColor(_ c: CoreMetric) -> Color {
+        loadColor(busy(Health.grade(c.scaled, warm: 0.55, hot: 0.85)), calm: Theme.series(c.isP ? 0 : 1, dark))
     }
 
     private func legend(_ title: String, _ color: Color, _ value: String) -> some View {

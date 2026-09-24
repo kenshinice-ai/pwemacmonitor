@@ -37,6 +37,7 @@
 "help.refresh.one" = "Refresh every second";
 "help.thermalState" = "Reported by macOS from the machine's own thermal budget. 'Performance reduced' means the system is already throttling; the temperatures below are readings, not verdicts.";
 "hero.building" = "building %1$d/%2$d";
+"hero.gpuOnly" = "GPU %@";
 "hero.power" = "POWER";
 "hero.powerHelp" = "The system rail. 'rails' is the four compute rails below it — the rest is display, ports and everything else in the machine.";
 "hero.rails" = "rails %@";
@@ -93,11 +94,15 @@
 "row.up" = "Up";
 "row.wired" = "Wired";
 "row.write" = "Write";
-"section.fansBattery" = "Fans & Battery";
+"section.battery" = "Battery";
+"section.fans" = "Fans";
+"section.memory" = "Memory";
+"section.network" = "Network";
 "section.processes" = "Top Processes";
-"section.storageNetwork" = "Storage & Network";
-"section.thermalMemory" = "Thermals & Memory";
+"section.storage" = "Storage";
+"section.thermals" = "Thermals";
 "silicon.railNote" = "compute rails only — the system figure also covers display and ports";
+"silicon.railsUnavailable" = "this version of macOS reports no CPU, Neural Engine or DRAM energy to apps — only the GPU rail is live";
 "thermal.critical" = "Cooling down";
 "thermal.fair" = "Slightly elevated";
 "thermal.nominal" = "Nominal";
@@ -116,10 +121,8 @@
 "value.critical" = "Critical";
 "value.cycles" = "%1$.0f%% · %2$d cycles";
 "value.elevated" = "Elevated";
-"value.fanless" = "Fanless design";
 "value.hm" = "%1$dh %2$dm";
 "value.idle" = "idle";
-"value.noBattery" = "No battery";
 "value.noReading" = "no reading";
 "value.normal" = "Normal";
 "value.of" = "of %@";

@@ -138,8 +138,14 @@ struct BatteryStats {
         // A fresh pack routinely measures a little above its design capacity; report that as 100 %
         // rather than "101 %", which reads as a bug. Newer macOS drops AppleRawMaxCapacity, so fall
         // back to the nominal charge capacity.
-        let maxCapacity = (p["AppleRawMaxCapacity"] as? Int) ?? (p["NominalChargeCapacity"] as? Int)
-        if let mx = maxCapacity, let design = p["DesignCapacity"] as? Int, design > 0 {
+        //
+        // macOS 27 moved the capacity figures off the top level into the nested `BatteryData`
+        // dictionary. Reading only the top level found nothing, and the card reported a healthy
+        // pack as 0 % — System Settings said 100 % on the same machine. Look in both places.
+        let nested = p["BatteryData"] as? [String: Any]
+        func capacity(_ key: String) -> Int? { (p[key] as? Int) ?? (nested?[key] as? Int) }
+        let maxCapacity = capacity("AppleRawMaxCapacity") ?? capacity("NominalChargeCapacity")
+        if let mx = maxCapacity, let design = capacity("DesignCapacity"), design > 0 {
             b.health = min(1.0, Double(mx) / Double(design))
         }
         if let mA = p["Amperage"] as? Int, let mV = p["Voltage"] as? Int {

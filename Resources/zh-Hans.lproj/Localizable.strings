@@ -4,6 +4,10 @@
 // 不翻译:PWE Monitor、五个通道键 MEM/SSD/PWR/GPU/CPU、电源轨 CPU/GPU/ANE/DRAM、
 // 核簇 E/P、单位、SMC 传感器名、进程名,以及 --probe / --json 的全部输出。
 
+
+/* Updates — the only outgoing request this app makes. */
+
+/* 1.4.0 改名后,清理叫旧名字的那一份。 */
 "a11y.allCalm" = "五个通道均平稳。";
 "a11y.band" = "%1$@,已达上限的 %2$d%%";
 "a11y.channel" = "%1$@%2$@,已达上限的 %3$d%%";
@@ -42,6 +46,7 @@
 "help.refresh.one" = "每秒刷新";
 "help.thermalState" = "由 macOS 依据机器自身的散热预算给出。「性能已受限」表示系统已经在降频;下面的温度是读数,不是判定。";
 "hero.building" = "累积中 %1$d/%2$d";
+"hero.gpuOnly" = "GPU %@";
 "hero.power" = "功耗";
 "hero.powerHelp" = "整机系统电源轨。「四路合计」是下方 CPU / GPU / ANE / DRAM 四条计算电源轨之和,两者之差是屏幕、接口和机器里的其余部分。";
 "hero.rails" = "四路合计 %@";
@@ -66,11 +71,20 @@
 "menu.sensors" = "全部传感器";
 "menu.source" = "在 GitHub 查看源码";
 "menu.style" = "菜单栏样式";
+"menu.updateReady" = "下载 %@ 版…";
 "menu.updates" = "检查更新…";
+"menu.updates" = "检查更新…";
+"menu.updatesAuto" = "自动检查";
 "menu.version" = "版本 %@";
 "menubar.compact" = "功耗 + 温度";
 "menubar.full" = "CPU + 功耗 + 温度";
 "menubar.icon" = "仅羽翼";
+"rename.body" = "这个 app 现在叫 PWE Monitor。两份副本用的是同一个身份,macOS 就分不清登录时该启动哪一个。把旧的那份移到废纸篓就好了,你设置过的东西一样不会丢。";
+"rename.dragInstead" = "请在「访达」的「应用程序」里,把 PWE MAC MONITOR 拖进废纸篓。";
+"rename.failed" = "没能移走旧副本";
+"rename.keep" = "两份都留着";
+"rename.title" = "还装着一份叫 PWE MAC MONITOR 的旧副本。";
+"rename.trash" = "把旧副本移到废纸篓";
 "row.address" = "地址";
 "row.app" = "应用";
 "row.battery" = "电池";
@@ -90,23 +104,35 @@
 "row.up" = "上行";
 "row.wired" = "联动";
 "row.write" = "写入";
-"section.fansBattery" = "风扇与电池";
+"section.battery" = "电池";
+"section.fans" = "风扇";
+"section.memory" = "内存";
+"section.network" = "网络";
 "section.processes" = "进程占用";
-"section.storageNetwork" = "存储与网络";
-"section.thermalMemory" = "温度与内存";
+"section.storage" = "存储";
+"section.thermals" = "温度";
 "silicon.railNote" = "仅计算电源轨 —— 系统功耗还包含屏幕与接口";
+"silicon.railsUnavailable" = "此版本 macOS 不再向应用提供 CPU、神经网络引擎与 DRAM 的能耗读数 —— 只有 GPU 电源轨可读";
 "thermal.critical" = "正在强制降温";
 "thermal.fair" = "略高";
 "thermal.nominal" = "正常";
 "thermal.serious" = "性能已受限";
+"update.current" = "PWE Monitor 已是最新版本。";
+"update.currentVersion" = "%@ 版";
+"update.download" = "下载";
+"update.later" = "以后";
+"update.ok" = "好";
+"update.openPage" = "打开下载页";
+"update.ready" = "%@ 版已发布。";
+"update.tryAgain" = "检查一下网络再试一次,或者直接打开下载页。";
+"update.unreachable" = "连不上 pwestudio.site。";
+"update.youHave" = "你现在用的是 %@。";
 "value.charging" = "充电中";
 "value.critical" = "紧张";
 "value.cycles" = "%1$.0f%% · %2$d 次循环";
 "value.elevated" = "偏高";
-"value.fanless" = "无风扇设计";
 "value.hm" = "%1$d 小时 %2$d 分";
 "value.idle" = "待机";
-"value.noBattery" = "无电池";
 "value.noReading" = "无读数";
 "value.normal" = "正常";
 "value.of" = "/ %@";
@@ -120,26 +146,3 @@
 "verdict.lowPower" = "低电量模式";
 "verdict.more" = " · 另有 %d 项";
 "verdict.one" = "%1$@%2$@ · 已达上限 %3$d%%";
-
-/* Updates — the only outgoing request this app makes. */
-"menu.updates" = "检查更新…";
-"menu.updateReady" = "下载 %@ 版…";
-"menu.updatesAuto" = "自动检查";
-"update.ready" = "%@ 版已发布。";
-"update.youHave" = "你现在用的是 %@。";
-"update.download" = "下载";
-"update.later" = "以后";
-"update.current" = "PWE Monitor 已是最新版本。";
-"update.currentVersion" = "%@ 版";
-"update.unreachable" = "连不上 pwestudio.site。";
-"update.tryAgain" = "检查一下网络再试一次,或者直接打开下载页。";
-"update.openPage" = "打开下载页";
-"update.ok" = "好";
-
-/* 1.4.0 改名后,清理叫旧名字的那一份。 */
-"rename.title" = "还装着一份叫 PWE MAC MONITOR 的旧副本。";
-"rename.body" = "这个 app 现在叫 PWE Monitor。两份副本用的是同一个身份,macOS 就分不清登录时该启动哪一个。把旧的那份移到废纸篓就好了,你设置过的东西一样不会丢。";
-"rename.trash" = "把旧副本移到废纸篓";
-"rename.keep" = "两份都留着";
-"rename.failed" = "没能移走旧副本";
-"rename.dragInstead" = "请在「访达」的「应用程序」里,把 PWE MAC MONITOR 拖进废纸篓。";

@@ -56,16 +56,23 @@ enum Theme {
         h == .calm ? ink(dark).opacity(dark ? 0.42 : 0.46) : health(h, dark: dark)
     }
 
-    /// Series colours for composition bars (core clusters, memory segments, power rails).
-    /// Identity, not status: amber marks the leading series and everything else steps down a
-    /// neutral ink ramp. Coral never appears here — it means "a problem" everywhere else in the
-    /// interface, and a stacked bar segment is not a problem.
-    static func seriesPrimary(_ dark: Bool) -> Color { accent(dark) }
+    /// Series colours for composition bars (core clusters, memory segments, power rails): a
+    /// neutral ink ramp, and nothing else.
+    ///
+    /// Until 1.5.0 the leading series was drawn in `accent` — which is the very same value as
+    /// `health(.warm)`. The comment said "identity, not status", but a colour cannot carry a
+    /// footnote: an idle Mac showed amber on every P-core, on the memory App segment and on
+    /// whichever power rail happened to lead, at 0.2 W as much as at 90. Status is the only thing
+    /// amber may say. A segment that is under load takes the status colour from its own reading;
+    /// the rest of the time it is ink.
+    ///
+    /// Four steps because the power rail has four segments. Measured against the bar's own
+    /// track, the lightest clears 1.53:1 light / 2.01:1 dark — the old three-step ramp's
+    /// lightest was 1.37:1, and every step here is darker than the one it replaces.
     static func series(_ step: Int, _ dark: Bool) -> Color {
-        let opacity = [0.50, 0.32, 0.18][min(max(step, 0), 2)]
+        let opacity = [0.70, 0.52, 0.36, 0.24][min(max(step, 0), 3)]
         return ink(dark).opacity(dark ? opacity : opacity * 0.85)
     }
-    static func seriesSecondary(_ dark: Bool) -> Color { series(0, dark) }
     static func healthNS(_ h: Health, dark: Bool) -> NSColor { NSColor(health(h, dark: dark)) }
 
     // MARK: Type — the platform's own face, at the platform's own sizes.

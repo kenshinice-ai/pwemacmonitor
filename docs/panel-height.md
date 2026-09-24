@@ -36,6 +36,22 @@ card, so the row figures above hide this:
 BATTERY, SSD and NETWORK sit within 2 pt of each other. That is the fact every three-across
 scheme below is built on.
 
+## 1.5.0: the cards follow the hardware
+
+The grid no longer has fixed pairs. The cards a Mac has — decided once at launch from the
+IORegistry (`AppleSmartBattery`) and the SMC fan keys, never from a sample — and the reader has
+not switched off are paired in reading order, and one left over spans the row: NETWORK as two
+columns of two, FANS side by side. Measured with `PWEMON_HARDWARE`, English:
+
+| Layout | Rows | Panel |
+|---|---|---|
+| MacBook Pro | thermals\|memory · fans\|battery · storage\|network | 1052 pt |
+| Mac mini / Studio / iMac | thermals\|memory · fans\|storage · network (wide) | 1006 pt |
+| MacBook Air | thermals\|memory · battery\|storage · network (wide) | 1016 pt |
+
+This also retires the reason 1.3.0 grouped Panel Sections by row: hiding one card now reflows the
+rest instead of padding its partner, so the switches are per card.
+
 ## The fold
 
 `maxBodyHeight = max(320, NSScreen.main.visibleFrame.height - 190)` clamps the scroll view, so the

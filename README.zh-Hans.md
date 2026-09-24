@@ -66,8 +66,19 @@ English 与简体中文。默认跟随你的 Mac;设置菜单里的**语言**可
 | <img src="docs/menubar-compact-dark.png" width="150"> | **功耗 + 温度** |
 | <img src="docs/menubar-full-dark.png" width="200"> | **CPU + 功耗 + 温度** |
 
-设置菜单里还有**刷新间隔**(1–5 秒)、**面板内容** —— 温度与内存、风扇与电池、存储与网络、
-进程占用,以及约 200 个 PMU 键的传感器转储,每一项都可开关并记住 ——
+### 它适配你手上这台 Mac
+
+显示哪些卡,由机器实际有什么决定,启动时判断一次:Mac mini、Studio、iMac 没有电池卡,
+温度卡里也没有电池行;MacBook Air 没有风扇卡。剩下的卡两两配对,多出单独一张就横跨整行 ——
+所以没有哪台 Mac 会一辈子挂着一张写着「无」的卡;在**面板内容**里关掉一张卡,其余的会重新排版,
+不会留下空洞。
+
+| MacBook Pro | Mac mini · Studio · iMac | MacBook Air |
+|---|---|---|
+| <img src="docs/dashboard-zh-dark.png" width="220"> | <img src="docs/dashboard-desktop-zh-dark.png" width="220"> | <img src="docs/dashboard-fanless-zh-dark.png" width="220"> |
+
+设置菜单里还有**刷新间隔**(1–5 秒)、**面板内容** —— 每一张卡,以及约 200 个 PMU 键的
+传感器转储,每一项都可开关并记住 ——
 **开机启动**、**语言**、**打开「活动监视器」**——看清是哪个进程占满了核心只是一半,
 另一半是去处理它,而这个 App 刻意不具备结束进程的能力 —— 以及**复制诊断信息**,
 把 `--probe` 的读数连同版本号和系统版本一起放进剪贴板,方便报障。

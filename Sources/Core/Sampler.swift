@@ -82,6 +82,50 @@ enum ThermalState: Int, Comparable, CaseIterable {
     }
 }
 
+/// What this Mac physically has. Decided once, from the hardware, and never from a sample.
+///
+/// A desktop has no battery and an Air has no fans, for the life of the machine — a card for
+/// either would show one line of "none" forever. But the panel's first rule is that it never
+/// changes size between refreshes, so the decision cannot hang on a reading: one failed battery
+/// read would reflow the grid mid-glance. The IORegistry and the SMC key list say what is
+/// fitted, which is the question being asked. Capabilities, not model identifiers, so a machine
+/// released next year needs no table entry.
+struct Hardware: Equatable {
+    var hasBattery: Bool
+    var hasFans: Bool
+
+    static let laptop = Hardware(hasBattery: true, hasFans: true)
+
+    func has(_ card: PanelCard) -> Bool {
+        switch card {
+        case .battery: return hasBattery
+        case .fans: return hasFans
+        default: return true
+        }
+    }
+}
+
+/// The switchable cards, in reading order. The grid pairs whichever of the first six are present
+/// and shown, so hiding one card — by hardware or by choice — reflows the rest instead of leaving
+/// a padded hole beside its partner.
+enum PanelCard: String, CaseIterable {
+    case thermals, memory, fans, battery, storage, network, processes
+
+    static let grid: [PanelCard] = [.thermals, .memory, .fans, .battery, .storage, .network]
+
+    var title: String {
+        switch self {
+        case .thermals:  return L("section.thermals", "Thermals")
+        case .memory:    return L("section.memory", "Memory")
+        case .fans:      return L("section.fans", "Fans")
+        case .battery:   return L("section.battery", "Battery")
+        case .storage:   return L("section.storage", "Storage")
+        case .network:   return L("section.network", "Network")
+        case .processes: return L("section.processes", "Top Processes")
+        }
+    }
+}
+
 /// The five channels the wing mark reports, innermost feather first. Fixed at five: the mark has
 /// five feathers and the identity standard forbids changing that count, so a sixth channel would
 /// have nowhere to go. Battery therefore rides with power rather than claiming a feather.
@@ -150,6 +194,13 @@ struct Snapshot {
     /// `--json` surface, so it is left alone; but the figure printed beside the rail legend has to
     /// equal the four bars underneath it or the card contradicts itself in front of the reader.
     var railPower: Double { cpuPower + gpuPower + anePower + ramPower }
+    /// Whether the CPU, ANE and DRAM energy counters have ever moved. On macOS 27 every one of
+    /// IOReport's millijoule Energy Model channels — 328 of them on an M4 Max, the per-cluster
+    /// ones included — reads zero to an ordinary process, and only the GPU's nanojoule counter
+    /// still advances. A CPU at 100 % was being printed as "CPU 0.0 W". A running CPU never
+    /// draws exactly nothing over a sampling interval, so a counter that has never moved is a
+    /// counter that is not being reported, and the panel says so instead of printing a zero.
+    var railsReadable = false
     // Thermals (°C)
     var cpuTemp = 0.0, cpuTempMax = 0.0, gpuTemp = 0.0, ssdTemp = 0.0, batteryTemp = 0.0
     var sensors: [Sensor] = []
@@ -343,6 +394,10 @@ extension Array where Element == ChannelHealth {
 /// Orchestrates all sources. Call `sample()` from a background queue every few seconds.
 final class Sampler {
     let soc: SocInfo
+    /// See `Hardware`. Read in `init` and never again.
+    private(set) var hardware = Hardware.laptop
+    /// Sticky: see `Snapshot.railsReadable`.
+    private var sawCPUEnergy = false
     private let ioreport: IOReport?
     private let smc: SMC?
     private let hid: IOHIDSensors?
@@ -382,6 +437,11 @@ final class Sampler {
             }
             smcFanKeys = Array(Set(smcFanKeys)).sorted()
         }
+        // A laptop's gas gauge is `AppleSmartBattery`; a desktop has no such service at all.
+        // `BatteryInstalled` covers the machine whose battery has been removed for service.
+        let gauge = ioFirstProperties("AppleSmartBattery")
+        hardware = Hardware(hasBattery: gauge.map { ($0["BatteryInstalled"] as? Bool) ?? true } ?? false,
+                            hasFans: !smcFanKeys.isEmpty)
         classifyLiveKeys(now: 0)
 
         if let hid {
@@ -535,6 +595,8 @@ final class Sampler {
         s.ssdTemp = ssdT.max() ?? 0
         s.sensors = sensors.sorted { ($0.name, $0.id) < ($1.name, $1.id) }
         s.sysPower = max(s.sysPower, s.allPower)
+        if s.cpuPower > 0 { sawCPUEnergy = true }
+        s.railsReadable = sawCPUEnergy
         s.thermal = ThermalState(ProcessInfo.processInfo.thermalState)
         s.lowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
 
