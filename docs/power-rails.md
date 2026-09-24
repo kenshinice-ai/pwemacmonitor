@@ -89,3 +89,18 @@ column's hover.
 and prints the two side by side, second by second — add `--load` to pin every core while it runs.
 Waiting on the Energy Model's own batches as a reference was tried and dropped: they arrive 6 to
 14 minutes apart, so one comparison costs half an hour.
+
+First run, 2026-09-24, M4 Max, `--load`, twelve one-second samples:
+
+| Source this app used | Samples | Against powermetrics |
+|---|---|---|
+| Cluster histograms | 2 | 12.70 vs 12.91 W (−1.6 %), 13.62 vs 12.21 W (+11.5 %) |
+| Energy Model counter | 10 | about 8 % low throughout, one sample at 21.69 W against 12.07 |
+| **All twelve, mean** | | **12.38 vs 12.26 W (+1.0 %)** |
+
+Two things this taught. **While powermetrics runs, the Energy Model counters go back to updating
+every second** — the app switched to them by itself for the middle ten samples. So macOS 27 has not
+removed them; it batches them when no privileged client is asking. And one of those per-second
+samples still carried a partial batch (21.69 W), which the two-in-a-row liveness test does not
+catch. Two histogram samples is too few to call the histogram's accuracy on the CPU; it wants a
+longer run with the counter kept out of the way.
