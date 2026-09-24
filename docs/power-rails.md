@@ -102,5 +102,7 @@ Two things this taught. **While powermetrics runs, the Energy Model counters go 
 every second** — the app switched to them by itself for the middle ten samples. So macOS 27 has not
 removed them; it batches them when no privileged client is asking. And one of those per-second
 samples still carried a partial batch (21.69 W), which the two-in-a-row liveness test does not
-catch. Two histogram samples is too few to call the histogram's accuracy on the CPU; it wants a
+catch — fixed in 1.5.2: `Sampler.cpuPower` sets the counter aside for any sample in which it reads
+more than 1.4 × the histogram plus 2 W, and ANE and DRAM hold their last good figures for that
+sample. `Tools/thresholds` pins the 21.69-against-12.07 case and the honest cases around it. Two histogram samples is too few to call the histogram's accuracy on the CPU; it wants a
 longer run with the counter kept out of the way.

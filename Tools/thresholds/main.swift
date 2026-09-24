@@ -119,6 +119,19 @@ require(abs(w1 / t1 - 0.25) < 1e-9 && t1 == 20, "cluster histogram: expected 0.2
 let (w2, t2) = Sampler.clusterWatts([("   2W", 0), ("   4W", 5), ("   6W", 5)])
 require(abs(w2 / t2 - 4) < 1e-9, "cluster histogram: 2 W bands, expected 4 W, got \(w2 / t2)")
 
+// ── which CPU power figure is printed ──
+// The case that shipped as a spike: a live counter carrying a batch, 21.69 W against a histogram
+// near 12. And the cases that must not change: an honest counter within the histogram's margin,
+// the histogram alone, and neither.
+func src(_ c: Double, _ l: Bool, _ h: Double?) -> (Double, PowerSource) { Sampler.cpuPower(counter: c, counterLive: l, histogram: h) }
+require(src(21.69, true, 12.07) == (12.07, .clusterHistogram), "a batch-laden counter sample must fall back to the histogram")
+require(src(11.0, true, 12.2) == (11.0, .energyModel), "an honest live counter must win")
+require(src(1.2, true, 2.5) == (1.2, .energyModel), "at idle the histogram reads high; the counter must still win")
+require(src(1.8, true, 0.9) == (1.8, .energyModel), "near idle a counter above the histogram stays inside the 2 W margin")
+require(src(0, false, 7.5) == (7.5, .clusterHistogram), "no live counter: histogram")
+require(src(40, true, nil) == (40, .energyModel), "no histogram on this machine: trust the counter")
+require(src(0, false, nil) == (0, .none), "neither: nothing to report")
+
 print(bad == 0 ? "✓ \(checked) assertions, magnitudes capped and verdicts intact"
                : "✗ \(bad) failures out of \(checked)")
 exit(bad == 0 ? 0 : 1)

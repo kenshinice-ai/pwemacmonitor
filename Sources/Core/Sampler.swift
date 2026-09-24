@@ -415,6 +415,7 @@ final class Sampler {
     /// logs no residency at all, so a histogram's own total understates the interval; the rate is
     /// the clock every histogram shares, and residency missing from it is time spent at 0 W.
     private var histogramTickRate = 0.0
+    private var lastANE = 0.0, lastDRAM = 0.0
     private let ioreport: IOReport?
     private let smc: SMC?
     private let hid: IOHIDSensors?
@@ -551,16 +552,20 @@ final class Sampler {
                 default: break
                 }
             }
-            // The Energy Model when it is live; the cluster histograms when it is not.
+            // The Energy Model when it is live and believable; the cluster histograms otherwise.
             let live = emCPU > 0 && cpuEnergyMovedLastSample
             cpuEnergyMovedLastSample = emCPU > 0
             histogramTickRate = max(histogramTickRate, clusterTicks / sample.elapsed)
+            let histogram = sawCluster && histogramTickRate > 0
+                ? clusterEnergy / (histogramTickRate * sample.elapsed) : nil as Double?
+            let (cpu, source) = Self.cpuPower(counter: emCPU, counterLive: live, histogram: histogram)
+            s.cpuPower = cpu; s.cpuPowerSource = source
             if live {
-                s.cpuPower = emCPU; s.cpuPowerSource = .energyModel
-                s.anePower = emANE; s.ramPower = emDRAM; s.aneDramReadable = true
-            } else if sawCluster, histogramTickRate > 0 {
-                s.cpuPower = clusterEnergy / (histogramTickRate * sample.elapsed)
-                s.cpuPowerSource = .clusterHistogram
+                // A sample whose CPU counter was rejected as carrying a batch carries the same
+                // batch on ANE and DRAM; hold the last good figures for that one sample rather than
+                // print the spike, or drop the two rails and have the legend flicker.
+                if source == .energyModel { lastANE = emANE; lastDRAM = emDRAM }
+                s.anePower = lastANE; s.ramPower = lastDRAM; s.aneDramReadable = true
             }
             cores.sort { Self.coreSortKey($0.id) < Self.coreSortKey($1.id) }
             s.cores = cores
@@ -691,6 +696,25 @@ final class Sampler {
         guard let peak = temps.max() else { return 0 }
         let live = temps.filter { $0 >= peak - 15 }
         return zeroDiv(live.reduce(0, +), Double(live.count))
+    }
+
+    /// Which CPU figure to print.
+    ///
+    /// A live counter is exact and wins — except when it carries the tail of a batch. On macOS 27 a
+    /// counter can advance every second (it does while `powermetrics` runs) and still deliver, in
+    /// one of those seconds, energy that accumulated while it was batching: measured 21.69 W in a
+    /// run where `powermetrics` said 12.07 and the samples either side read 11. The histogram is
+    /// never more than half a band high per cluster and never batches, so a counter reading well
+    /// above it — 1.4 times, plus 2 W for the histogram's own coarseness at idle — is a batch, and
+    /// the histogram is used for that sample. The same run put the two within 11 % of each other
+    /// otherwise, so honest samples sit far inside that margin.
+    static func cpuPower(counter: Double, counterLive: Bool, histogram: Double?) -> (Double, PowerSource) {
+        if counterLive {
+            guard let h = histogram, counter > h * 1.4 + 2 else { return (counter, .energyModel) }
+            return (h, .clusterHistogram)
+        }
+        if let h = histogram { return (h, .clusterHistogram) }
+        return (0, .none)
     }
 
     /// A PMP cluster histogram, reduced to watt-ticks and ticks. Each state is a power band named
