@@ -14,3 +14,6 @@ Icon?
 .idea/
 *.xcuserstate
 xcuserdata/
+
+# Claude Code per-machine settings (auto-memory group wiring)
+**/.claude/settings.local.json
