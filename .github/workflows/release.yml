@@ -68,13 +68,20 @@ jobs:
 
       - name: Verify the bundle
         run: |
+          # Whatever build.sh produced, not a name spelled here: this step looked for
+          # "PWE MAC MONITOR.app" and a bundled Inter.ttf for a month after 1.3.0 dropped the
+          # font and 1.4.0 renamed the bundle, and every run since was red for that alone.
+          APP=$(find build -maxdepth 1 -name "*.app" | head -1)
+          test -n "$APP"
           echo "--- signature ---"
-          codesign -dv --verbose=2 "build/PWE MAC MONITOR.app" 2>&1 | grep -E "Authority|Signature|TeamIdentifier" || true
-          APP="build/PWE MAC MONITOR.app"
+          codesign -dv --verbose=2 "$APP" 2>&1 | grep -E "Authority|Signature|TeamIdentifier" || true
           codesign --verify --deep --strict "$APP"
-          test -f "$APP/Contents/Resources/Fonts/Inter.ttf"
           test -f "$APP/Contents/Resources/THIRD-PARTY-NOTICES.md"
+          test -f "$APP/Contents/Resources/zh-Hans.lproj/Localizable.strings"
           "$APP/Contents/MacOS/pwemon" --probe || echo "no Apple Silicon counters on this runner"
+          # The thresholds are pure arithmetic and run anywhere; the port check needs the sensors.
+          swiftc -O Sources/Core/*.swift Tools/thresholds/main.swift -o "$RUNNER_TEMP/thresholds"
+          "$RUNNER_TEMP/thresholds" | tail -3
 
       - name: Checksums
         run: shasum -a 256 build/*.dmg | tee build/SHA256SUMS.txt
