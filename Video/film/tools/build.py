@@ -30,7 +30,7 @@ import argparse, bisect, json, pathlib, subprocess, wave
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parent.parent   # the film's folder; --root points this copy at another film
 REPO = ROOT.parent.parent
 
 # Frame and phone window, in output pixels.
@@ -508,6 +508,11 @@ class Renderer:
         key = (step["take"], index, size, tuple(marks), rect and tuple(rect), round(spot_alpha, 3))
         if key == getattr(self, "_phone_key", None):
             return self._phone
+        paint = FILM["takes"][step["take"]].get("paint")
+        if paint:                                 # rectangles of the recording to black out: the simulator blinks the Dynamic Island off
+            frame = frame.copy()
+            for x0, y0, x1, y1 in paint:
+                ImageDraw.Draw(frame).rounded_rectangle((x0, y0, x1, y1), (y1 - y0) // 2, fill=(0, 0, 0))
         layer = (frame if size == frame.size else frame.resize(size, Image.LANCZOS)).convert("RGBA")
         k = size[0] / WIN_PT                   # output pixels per point
 
@@ -518,7 +523,7 @@ class Renderer:
             veil = veil.filter(ImageFilter.GaussianBlur(1.2)).resize(size, Image.BILINEAR)
             layer.alpha_composite(Image.merge("RGBA", (*[Image.new("L", size, 8)] * 3, veil)))
         for px, py, scale, alpha in marks:
-            d = int(30 * k * scale * 1.08)
+            d = int(FILM.get("tap_points", 30) * k * scale * 1.08)   # a pointer's click by default; 44 for a finger
             sprite = self.ring.resize((d, d), Image.LANCZOS)
             if alpha < 0.997:
                 sprite.putalpha(sprite.getchannel("A").point(lambda a: int(a * alpha)))
@@ -602,8 +607,11 @@ class Renderer:
             self.keycap(canvas, step, t)
             self.chip(canvas, t)
             self.caption(canvas, t)
-            if presence > 0.5 and self.script.get("sample_tag"):
-                paste_centered(canvas, self.text(self.script["sample_tag"], 26, "Regular", MUTED), TEXT_X, TAG_Y, (presence - 0.5) * 2 * 0.8)
+            # The line under the picture says what the viewer is looking at. A step may name one of the
+            # script's "tags" (real data here, sample states there); otherwise it is the film's one tag.
+            tag = self.script.get("tags", {}).get(step.get("tag")) or self.script.get("sample_tag")
+            if presence > 0.5 and tag:
+                paste_centered(canvas, self.text(tag, 26, "Regular", MUTED), TEXT_X, TAG_Y, (presence - 0.5) * 2 * 0.8)
         return canvas.convert("RGB")
 
     def chip(self, canvas, t):
@@ -729,17 +737,22 @@ def write_srt(renderer, path):
 # ---------------------------------------------------------------- entry
 
 def main():
+    global ROOT, REPO
     ap = argparse.ArgumentParser()
     ap.add_argument("script")
     ap.add_argument("--plan", action="store_true")
     ap.add_argument("--stills", nargs="*", type=float)
     ap.add_argument("--fps", type=int, default=60)
-    ap.add_argument("--music", default=str(ROOT / "build/music.wav"))
+    ap.add_argument("--music", help="default: build/music.wav in the film's folder")
     ap.add_argument("--edit", default="edit.json")
     ap.add_argument("--layout", default="tall", choices=["tall", "wide", "loop"])
     ap.add_argument("--silent", action="store_true", help="no narration, no music: the picture only")
     ap.add_argument("--name", help="the output's file name without .mp4, when the default would collide")
+    ap.add_argument("--root", help="another film's folder: its film.json, scripts, edits and build/ are used instead of this copy's")
     args = ap.parse_args()
+    if args.root:
+        ROOT = pathlib.Path(args.root).resolve()
+        REPO = ROOT.parent.parent
     FILM.update(json.loads((ROOT / "film.json").read_text()))
     script = json.loads((ROOT / args.script).read_text())
     if "main" in script:                            # the take the loop's frame is sized to, per language
@@ -795,7 +808,7 @@ def main():
         print(final)
         return
     audio = ROOT / f"build/work/{name}.wav"
-    mix(renderer, args.music, audio)
+    mix(renderer, args.music or ROOT / "build/music.wav", audio)
     subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", str(silent), "-i", str(audio), "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
                     "-shortest", "-movflags", "+faststart", str(final)], check=True)
     write_srt(renderer, ROOT / f"build/{name}.srt")
