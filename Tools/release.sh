@@ -114,6 +114,13 @@ echo "── self-checks ──────────────────�
 # missing translation: before anything is built to ship.
 ./build.sh >/dev/null
 "build/PWE Monitor.app/Contents/MacOS/pwemon" --updatecheck | sed 's/^/  /'
+# Two hundred samples must not cost a Mach port. Every release up to 1.5.2 leaked one per sample
+# and was ended by the kernel after about six days; nothing shorter than this notices.
+"build/PWE Monitor.app/Contents/MacOS/pwemon" --portcheck | sed 's/^/  /'
+# Every band in the interface, swept across every reachable reading.
+CHECKS="${TMPDIR:-/tmp}/pwe-mac-monitor-build"
+swiftc -O Sources/Core/*.swift Tools/thresholds/main.swift -o "$CHECKS/thresholds"
+"$CHECKS/thresholds" | tail -1 | sed 's/^/  /'
 
 echo "── version $VERSION ──────────────────────────────────────"
 BUILD_NUMBER=$(( $(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" Resources/Info.plist) + 1 ))

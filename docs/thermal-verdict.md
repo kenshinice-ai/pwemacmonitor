@@ -84,6 +84,31 @@ contribution and the GPU might be cold.
 when the row mattered. And the hover no longer claims a throttle point for the die sensors — they
 have no published one. It says who decides instead.
 
+## A magnitude on its threshold holds its band (1.6.0)
+
+A reading that sits on a threshold changes band with every sample. Recorded on 2026-10-09 under a
+steady load that held the hottest core at 94–96 °C: the verdict line went from "CPU warm" to "All
+five channels calm" and back nine times in forty seconds, and the wing in the menu bar blinked with
+it. The band is a statement about the machine, and the machine had not changed.
+
+So a magnitude that has turned warm stays warm until it is clearly below the line again:
+
+| Magnitude | Turns warm at | Lets go below |
+|---|---|---|
+| CPU average, CPU peak, GPU die | 95 °C | 92 °C |
+| System power | 85 % of the chip's envelope | 80 % |
+
+While it is held, the feather stands on the warm mark and the line reads "72 % to its limit",
+which is what warm has always meant. `Snapshot.held` carries the latch from one sample to the next
+and is the only state a band has; `channels()`, the menu-bar figure and the THERMALS row all read
+it, so they cannot disagree. Holding never lifts anything to coral.
+
+Only magnitudes are held. A verdict — memory pressure, the battery's range, the SSD's rating, the
+thermal state itself — is somebody else's line, and is reported exactly where they drew it.
+
+`Tools/thresholds` replays a reading hovering between 90 and 96 °C: ten band changes without the
+hold, two with it.
+
 ## Still guesses, and that is now safe
 
 `tempWarm` / `tempFill` and the power envelope table are calibrated on **one machine**. Max is the
@@ -92,7 +117,7 @@ On a chip that never reaches 95 °C the die channels simply stay calm, which is 
 
 `Tools/thresholds` holds the line that makes this acceptable: it sweeps 0–200 °C and 0–400 W with
 macOS reporting nominal and **fails the build if any magnitude reaches hot**, then checks that all
-seven verdicts still do. 80,233 assertions.
+seven verdicts still do. 80,291 assertions.
 
 ## Re-measuring on another chip
 

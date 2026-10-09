@@ -41,10 +41,12 @@
 "help.core" = "%1$@ 核 %2$@ · %3$@ · %4$@";
 "help.gauge" = "%1$@ · %2$@ · 刻度 20–120 °C · 是不是问题由 macOS 判定,见「热状态」";
 "help.gaugeLimit" = "%1$@ · %2$@ · 额定 %3$d °C · 刻度 20–120 °C";
+"help.load" = "1、5、15 分钟的平均负载:正在运行或排队等核心的线程数。这台 Mac 有 %d 个核心,数字高于 %d 说明有任务在排队。";
 "help.noSensor" = "该传感器无读数";
 "help.refresh.many" = "每 %d 秒刷新";
 "help.refresh.one" = "每秒刷新";
 "help.thermalState" = "由 macOS 依据机器自身的散热预算给出。「性能已受限」表示系统已经在降频;下面的温度是读数,不是判定。";
+"help.traffic" = "这台 Mac 自身网口上的流量 —— 以太网与 Wi-Fi,经过 VPN 的不重复计。图表顶端:%@。";
 "hero.building" = "累积中 %1$d/%2$d";
 "hero.gpuOnly" = "GPU %@";
 "hero.power" = "功耗";
@@ -134,6 +136,7 @@
 "value.noReading" = "无读数";
 "value.normal" = "正常";
 "value.of" = "/ %@";
+"value.offline" = "未连接";
 "value.onBattery" = "电池供电";
 "value.onPower" = "外接电源";
 "value.reading" = "读取中…";

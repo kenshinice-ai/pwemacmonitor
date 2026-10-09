@@ -326,23 +326,39 @@ struct DashboardView: View {
     }
 
     // MARK: Network
-    /// Wide — the card left over on an Air or a desktop — it runs two columns of two.
+    /// Traffic over the window, the two figures it is made of, and the address.
+    ///
+    /// Until 1.6.0 the fourth row here was the load average, which is a count of threads waiting
+    /// for a core: under the heading NETWORK it read as a network figure, and it is now beside the
+    /// cores it describes. The row it left is the trace. A rate on its own is a number that jumps;
+    /// what a reader comes to this card for is whether something has been moving, and for how long.
+    ///
+    /// Same four rows as before, so the card is the height it was. Wide — the card left over on
+    /// an Air or a desktop — it runs two columns of two.
     private func network(wide: Bool) -> some View {
         Card(dark: dark, title: s.network.primaryInterface.isEmpty ? L("card.network", "NETWORK")
                  : L("card.network", "NETWORK") + " · \(s.network.primaryInterface.uppercased())",
              fills: true) {
+            let down = monitor.history["netIn"] ?? [], up = monitor.history["netOut"] ?? []
+            let trace = TrafficTrace(down: down, up: up,
+                                     downColor: Theme.series(0, dark), upColor: Theme.series(2, dark))
+                .frame(height: 13)
+                .accessibilityHidden(true)      // the two rows under it say the same thing in words
+                .help(String(format: L("help.traffic", "Traffic on this Mac's own links — Ethernet and Wi-Fi, not counted again through a VPN. Top of the chart: %@."),
+                             Fmt.rate(TrafficTrace.ceiling(down, up))))
             let throughput = VStack(spacing: 5) {
-                kv(L("row.down", "Down"), Fmt.rate(s.netInPerSec))
-                kv(L("row.up", "Up"), Fmt.rate(s.netOutPerSec))
+                kv(L("row.down", "Down"), Fmt.rate(s.netInPerSec), swatch: Theme.series(0, dark))
+                kv(L("row.up", "Up"), Fmt.rate(s.netOutPerSec), swatch: Theme.series(2, dark))
             }
-            let context = VStack(spacing: 5) {
-                if !s.network.primaryAddress.isEmpty { kv(L("row.address", "Address"), s.network.primaryAddress) }
-                kv(L("row.load", "Load"), String(format: "%.1f · %.1f · %.1f", s.loadAvg.0, s.loadAvg.1, s.loadAvg.2))
-            }
+            // Always the row, whatever is in it: a card that loses a row when the Wi-Fi drops
+            // makes the whole panel jump.
+            let address = kv(L("row.address", "Address"),
+                             s.network.primaryAddress.isEmpty ? L("value.offline", "not connected") : s.network.primaryAddress,
+                             color: s.network.primaryAddress.isEmpty ? Theme.muted(dark) : nil)
             if wide {
-                HStack(alignment: .top, spacing: Theme.s3) { throughput; context }
+                HStack(alignment: .top, spacing: Theme.s3) { throughput; VStack(spacing: 5) { trace; address } }
             } else {
-                VStack(spacing: 5) { throughput; context }
+                VStack(spacing: 5) { trace; throughput; address }
             }
         }
     }
@@ -379,6 +395,18 @@ struct DashboardView: View {
                     legend(e, Theme.series(1, dark), "\(Fmt.ghz(s.ecpuFreq))")
                     legend(p, Theme.series(0, dark), "\(Fmt.ghz(s.pcpuFreq))")
                     Spacer(minLength: 0)
+                    // The load average, under the cores it is about. No swatch: it is not a
+                    // series in the chart above, it is the queue for it.
+                    HStack(spacing: 4) {
+                        Text(L("row.load", "Load").uppercased()).font(Theme.ui(9, 600)).tracking(Theme.labelTracking(0.4))
+                            .foregroundStyle(Theme.muted(dark))
+                        Text(String(format: "%.1f · %.1f · %.1f", s.loadAvg.0, s.loadAvg.1, s.loadAvg.2))
+                            .font(Theme.number(9, 500)).foregroundStyle(Theme.ink(dark).opacity(0.75))
+                    }
+                    .lineLimit(1).fixedSize()
+                    .accessibilityElement(children: .combine)
+                    .help(String(format: L("help.load", "Load average over 1, 5 and 15 minutes: threads running or waiting for a core. This Mac has %d cores, so a figure above %d means work is queueing."),
+                                 coreCount, coreCount))
                 }
 
                 Divider().overlay(Theme.stroke(dark)).padding(.vertical, 1)
@@ -478,9 +506,10 @@ struct DashboardView: View {
     /// fires on nothing teaches the reader to stop looking, which is the one thing this palette
     /// cannot afford.
     private func processHealth(_ percentOfOneCore: Double) -> Health {
-        let cores = Double(max(1, (monitor.soc?.ecpuCores ?? 0) + (monitor.soc?.pcpuCores ?? 0)))
-        return Health.grade(percentOfOneCore / (cores * 100), warm: 0.125, hot: 0.333)
+        Health.grade(percentOfOneCore / (Double(coreCount) * 100), warm: 0.125, hot: 0.333)
     }
+
+    private var coreCount: Int { max(1, (monitor.soc?.ecpuCores ?? 0) + (monitor.soc?.pcpuCores ?? 0)) }
 
     // MARK: All sensors
     @ViewBuilder private var sensors: some View {
@@ -829,6 +858,59 @@ struct CoreBar: View {
         }
         .frame(height: 28)
         .frame(maxWidth: .infinity)
+    }
+}
+
+/// Down and up over the sparkline window, on one scale.
+///
+/// Down is the filled area and up the line across it, in two steps of the ink ramp — the same two
+/// swatches the rows beneath it carry. Neither is a status colour: traffic is not a fault.
+///
+/// The scale is the busiest moment in the window, but never less than 1 MB/s. Scaled to its own
+/// peak alone, the trickle an idle Mac always carries would fill the chart and look like a
+/// download; with the floor, idle is a line along the bottom and a real transfer stands up from it.
+struct TrafficTrace: View {
+    let down: [Double], up: [Double]
+    let downColor: Color, upColor: Color
+
+    static let floor = 1_000_000.0
+    static func ceiling(_ down: [Double], _ up: [Double]) -> Double {
+        Swift.max(floor, down.max() ?? 0, up.max() ?? 0)
+    }
+
+    var body: some View {
+        GeometryReader { g in
+            let top = TrafficTrace.ceiling(down, up)
+            Path { p in
+                p.move(to: CGPoint(x: 0, y: g.size.height - 0.5))
+                p.addLine(to: CGPoint(x: g.size.width, y: g.size.height - 0.5))
+            }
+            .stroke(downColor.opacity(0.25), lineWidth: 1)
+            // Same rule as `Sparkline`: below a readable footprint, the baseline and nothing else.
+            if down.count >= Sparkline.minimumSamples {
+                let d = points(down, top, g.size), u = points(up, top, g.size)
+                Path { p in
+                    p.move(to: CGPoint(x: d[0].x, y: g.size.height))
+                    d.forEach { p.addLine(to: $0) }
+                    p.addLine(to: CGPoint(x: d[d.count - 1].x, y: g.size.height))
+                    p.closeSubpath()
+                }
+                .fill(downColor.opacity(0.55))
+                Path { p in
+                    p.move(to: u[0])
+                    u.dropFirst().forEach { p.addLine(to: $0) }
+                }
+                .stroke(upColor, style: StrokeStyle(lineWidth: 1, lineCap: .round, lineJoin: .round))
+            }
+        }
+    }
+
+    private func points(_ values: [Double], _ top: Double, _ size: CGSize) -> [CGPoint] {
+        let n = CGFloat(Theme.historyLength - 1)
+        return values.enumerated().map { i, v in
+            CGPoint(x: size.width * CGFloat(i + Theme.historyLength - values.count) / n,
+                    y: size.height * (1 - CGFloat(Swift.min(1, Swift.max(0, v / top)))))
+        }
     }
 }
 

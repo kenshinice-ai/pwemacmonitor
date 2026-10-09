@@ -162,6 +162,9 @@ struct ChannelHealth {
     let fill: Double        // 0…1, clamped for drawing; the band already records any overshoot
 }
 
+/// The four readings graded against a threshold we chose, each of which can hover on it.
+enum Magnitude: CaseIterable { case cpuTemp, cpuTempMax, gpuTemp, power }
+
 struct CoreMetric: Identifiable {
     let id: String          // IOReport channel name
     let isP: Bool
@@ -224,6 +227,8 @@ struct Snapshot {
     // What the OS says, as opposed to what we measure
     var thermal = ThermalState.nominal
     var lowPowerMode = false
+    /// Magnitudes that reached warm and have not yet fallen clear of it. See `Snapshot.holds`.
+    var held: Set<Magnitude> = []
 
     // MARK: health grading
     //
@@ -244,10 +249,45 @@ struct Snapshot {
     // a red panel. Raising the number would only move the guess. Capping magnitudes at warm makes a
     // mis-calibrated threshold cosmetic — amber arrives early or late — instead of a false alarm.
     static let tempWarm = 95.0, tempFill = 110.0
-    var cpuTempHealth: Health { min(.warm, Health.grade(cpuTemp, warm: Snapshot.tempWarm, hot: Snapshot.tempFill)) }
+    /// A magnitude that has turned warm stays warm until it is clearly below the line again:
+    /// 3 °C for a die, five points of the envelope for power.
+    ///
+    /// Without that, a reading sitting on its threshold changes band with every sample. Recorded
+    /// 2026-10-09 under a sustained load that held the hottest core at 94–96 °C: the verdict line
+    /// went from "CPU warm" to "All five channels calm" and back nine times in forty seconds, and
+    /// the wing in the menu bar blinked with it. The band is a statement about the machine, and
+    /// the machine had not changed.
+    ///
+    /// Only the four magnitudes. A verdict — memory pressure, the battery's range, the SSD's
+    /// rating, macOS's thermal state — is somebody else's line, and is reported where they drew it.
+    static let tempRelease = 3.0, powerWarm = 0.85, powerRelease = 0.80
+    static func holds(_ was: Bool, _ v: Double, warm: Double, release: Double) -> Bool {
+        v >= warm || (was && v >= release)
+    }
+    /// What `held` should be for these readings, given what it was a sample ago.
+    func holding(after previous: Set<Magnitude>, chipClass: String) -> Set<Magnitude> {
+        let envelope = Snapshot.powerEnvelope(chipClass)
+        return Set(Magnitude.allCases.filter { m in
+            switch m {
+            case .cpuTemp:    return Snapshot.holds(previous.contains(m), cpuTemp, warm: Snapshot.tempWarm, release: Snapshot.tempWarm - Snapshot.tempRelease)
+            case .cpuTempMax: return Snapshot.holds(previous.contains(m), cpuTempMax, warm: Snapshot.tempWarm, release: Snapshot.tempWarm - Snapshot.tempRelease)
+            case .gpuTemp:    return Snapshot.holds(previous.contains(m), gpuTemp, warm: Snapshot.tempWarm, release: Snapshot.tempWarm - Snapshot.tempRelease)
+            case .power:      return Snapshot.holds(previous.contains(m), sysPower, warm: envelope * Snapshot.powerWarm, release: envelope * Snapshot.powerRelease)
+            }
+        })
+    }
+    /// A magnitude's band: its own reading, or warm while it is being held, and never hot.
+    private func magnitude(_ m: Magnitude, _ v: Double, warm: Double, hot: Double) -> Health {
+        min(.warm, max(Health.grade(v, warm: warm, hot: hot), held.contains(m) ? .warm : .calm))
+    }
+    /// The same thing as a strain: a held magnitude stands on the warm mark until it lets go.
+    private func strain(_ m: Magnitude, _ v: Double, warm: Double, hot: Double) -> Double {
+        min(Health.warmMark + 0.14, max(Health.strain(v, warm: warm, hot: hot), held.contains(m) ? Health.warmMark : 0))
+    }
+    var cpuTempHealth: Health { magnitude(.cpuTemp, cpuTemp, warm: Snapshot.tempWarm, hot: Snapshot.tempFill) }
     /// The hottest core is what actually drives throttling, so it grades separately from the average.
-    var cpuTempMaxHealth: Health { min(.warm, Health.grade(cpuTempMax, warm: Snapshot.tempWarm, hot: Snapshot.tempFill)) }
-    var gpuTempHealth: Health { min(.warm, Health.grade(gpuTemp, warm: Snapshot.tempWarm, hot: Snapshot.tempFill)) }
+    var cpuTempMaxHealth: Health { magnitude(.cpuTempMax, cpuTempMax, warm: Snapshot.tempWarm, hot: Snapshot.tempFill) }
+    var gpuTempHealth: Health { magnitude(.gpuTemp, gpuTemp, warm: Snapshot.tempWarm, hot: Snapshot.tempFill) }
     var ssdTempHealth: Health { ssdTemp == 0 ? .calm : Health.grade(ssdTemp, warm: 55, hot: 68) }
     var cpuLoadHealth: Health { Health.grade(cpuUsage, warm: 0.55, hot: 0.85) }
     var gpuLoadHealth: Health { Health.grade(gpuUsage, warm: 0.55, hot: 0.85) }
@@ -277,7 +317,7 @@ struct Snapshot {
     /// which is worth seeing; coral would say "something is wrong", which it is not.
     func powerHealth(chipClass: String) -> Health {
         let envelope = Snapshot.powerEnvelope(chipClass)
-        return min(.warm, Health.grade(sysPower, warm: envelope * 0.85, hot: envelope))
+        return magnitude(.power, sysPower, warm: envelope * Snapshot.powerWarm, hot: envelope)
     }
     func overall(chipClass: String) -> Health {
         channels(chipClass: chipClass).map(\.band).max() ?? .calm
@@ -309,8 +349,7 @@ struct Snapshot {
                 // limits — Apple's operating range and a charge that is about to run out — and
                 // keep their path to hot.
                 let envelope = Snapshot.powerEnvelope(chipClass)
-                var s = min(Health.warmMark + 0.14,
-                            Health.strain(sysPower, warm: envelope * 0.85, hot: envelope))
+                var s = strain(.power, sysPower, warm: envelope * Snapshot.powerWarm, hot: envelope)
                 if battery.present {
                     // `.nextUp` because `strain` grades inclusively and the rule this replaces
                     // was strictly greater. Cheaper to be exact than to argue about whether a
@@ -326,13 +365,9 @@ struct Snapshot {
             // feathers take the thermal state because it is one condition on one die — and it is
             // the only signal here that measured out as tracking reality (see `tempWarm`).
             case .gpu:
-                v = max(min(Health.warmMark + 0.14,
-                            Health.strain(gpuTemp, warm: Snapshot.tempWarm, hot: Snapshot.tempFill)),
-                        thermal.strain)
+                v = max(strain(.gpuTemp, gpuTemp, warm: Snapshot.tempWarm, hot: Snapshot.tempFill), thermal.strain)
             case .cpu:
-                v = max(min(Health.warmMark + 0.14,
-                            Health.strain(cpuTempMax, warm: Snapshot.tempWarm, hot: Snapshot.tempFill)),
-                        thermal.strain)
+                v = max(strain(.cpuTempMax, cpuTempMax, warm: Snapshot.tempWarm, hot: Snapshot.tempFill), thermal.strain)
             }
             return ChannelHealth(channel: c,
                                  band: Health.grade(v, warm: Health.warmMark, hot: 1),
@@ -420,10 +455,13 @@ final class Sampler {
     private let smc: SMC?
     private let hid: IOHIDSensors?
     private let procs = ProcessSampler()
+    private let net = NetworkSampler()
+    /// See `Snapshot.holds`. Carried from one sample to the next; this is the only state a band has.
+    private var held: Set<Magnitude> = []
     // Every temperature key the SMC exposes, and the subset that is actually reporting a live die.
-    // A full sweep of ~190 keys costs ~28 ms; the live subset is a fraction of that. Parked clusters
-    // report an exact 40.0 °C placeholder or a sub-ambient value, and can wake later, so the full
-    // set is re-classified periodically.
+    // A full sweep of ~190 keys costs ~40 ms of waiting on the SMC; the live subset is less. Parked
+    // clusters report an exact 40.0 °C placeholder, zero, or a sub-ambient value, and can wake
+    // later, so the full set is re-classified every ten seconds.
     private var smcCPUKeys: [String] = [], smcGPUKeys: [String] = [], smcFanKeys: [String] = []
     private var liveCPUKeys: [String] = [], liveGPUKeys: [String] = []
     private var lastKeyScan: TimeInterval = -1e9
@@ -431,7 +469,6 @@ final class Sampler {
     /// has none (M1 / older macOS).
     private var hotHIDNames: Set<String> = []
     private var prevDisk: (DiskStats, TimeInterval)?
-    private var prevNet: (NetworkStats, TimeInterval)?
     private var lastProcSample: TimeInterval = 0
     /// Guards the SMC connection and the IOHID client. `sample()` spends most of its wall time
     /// asleep inside IOReport's interval wait, so an on-demand sensor read from another queue only
@@ -450,7 +487,12 @@ final class Sampler {
                 if k.hasPrefix("F"), k.hasSuffix("Ac") { smcFanKeys.append(k); continue }
                 let isCPU = k.hasPrefix("Tp") || k.hasPrefix("Te") || k.hasPrefix("Ts")
                 let isGPU = k.hasPrefix("Tg")
-                guard isCPU || isGPU, let v = smc.read(k), v.type == "flt ", let f = SMC.numeric(v), f > 0, f < 150 else { continue }
+                // By type, never by what the key happens to read at this instant. Until 1.6.0 a
+                // key reading zero here was dropped for the life of the process, and a cluster
+                // that is powered down reads zero: six launches in a row kept 146, 146, 146, 116,
+                // 146 and 146 of the same 146 keys, and an earlier one kept 74. Whichever cores
+                // were asleep at launch could then get as hot as they liked unseen.
+                guard isCPU || isGPU, let v = smc.read(k), v.type == "flt " else { continue }
                 if isCPU { smcCPUKeys.append(k) } else { smcGPUKeys.append(k) }
             }
             smcFanKeys = Array(Set(smcFanKeys)).sorted()
@@ -518,7 +560,9 @@ final class Sampler {
     /// - Parameter allSensors: sweep every SMC key and IOHID service, for the "all sensors" panel.
     ///   That full sweep costs roughly 60 ms more than the live subset the rest of the app needs,
     ///   so it only runs while the panel is actually on screen.
-    func sample(interval: Double, allSensors: Bool = false) -> Snapshot {
+    /// - Parameter detail: someone is reading the panel. The process table is the one source
+    ///   nothing but the panel shows; see where it is sampled.
+    func sample(interval: Double, allSensors: Bool = false, detail: Bool = true) -> Snapshot {
         var s = Snapshot()
         s.interval = interval
         s.uptime = ProcessInfo.processInfo.systemUptime
@@ -589,7 +633,7 @@ final class Sampler {
         var cpuT: [Double] = [], gpuT: [Double] = [], ssdT: [Double] = []
         if allSensors { sensors.reserveCapacity(smcCPUKeys.count + smcGPUKeys.count + 32) }
         // A cluster that was parked at startup can wake up later, so re-classify now and then.
-        if s.uptime - lastKeyScan > 60 { classifyLiveKeys(now: s.uptime) }
+        if s.uptime - lastKeyScan > 10 { classifyLiveKeys(now: s.uptime) }
         let cpuKeys = allSensors ? smcCPUKeys : liveCPUKeys
         let gpuKeys = allSensors ? smcGPUKeys : liveGPUKeys
         if let smc {
@@ -637,10 +681,16 @@ final class Sampler {
 
         s.thermal = ThermalState(ProcessInfo.processInfo.thermalState)
         s.lowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
+        held = s.holding(after: held, chipClass: soc.chipClass)
+        s.held = held
 
         s.memory = MemoryStats.read()
         s.battery = BatteryStats.read()
         if s.batteryTemp == 0 { s.batteryTemp = s.battery.temperature }
+        // And the other way. macOS 27 no longer publishes `Temperature` on the gas gauge's
+        // registry entry at all, so the figure the battery verdict grades — outside 38 or 42 °C —
+        // read zero there and could never fire. The IOHID sensor above is the same cell.
+        if s.battery.temperature == 0 { s.battery.temperature = s.batteryTemp }
 
         let disk = DiskStats.read()
         if let (pd, pt) = prevDisk, s.uptime > pt {
@@ -650,23 +700,21 @@ final class Sampler {
         }
         prevDisk = (disk, s.uptime); s.disk = disk
 
-        let net = NetworkStats.read()
-        if let (pn, pt) = prevNet, s.uptime > pt {
-            let dt = s.uptime - pt
-            s.netInPerSec = net.inBytes >= pn.inBytes ? Double(net.inBytes - pn.inBytes) / dt : 0
-            s.netOutPerSec = net.outBytes >= pn.outBytes ? Double(net.outBytes - pn.outBytes) / dt : 0
-        }
-        prevNet = (net, s.uptime)
-        s.network = net
+        let traffic = net.sample(now: s.uptime)
+        s.netInPerSec = traffic.inPerSec; s.netOutPerSec = traffic.outPerSec
+        s.network = traffic.stats
 
-        // Measured at 1.3 ms for the whole table, so it runs on every sample regardless of whether
-        // the dashboard is open — otherwise the process list would be blank for the first cycle or
-        // two after opening it, and CPU percentages need a previous baseline anyway.
-        if s.uptime - lastProcSample >= 1 {
-            cachedProcs = procs.sample().sorted { $0.cpuPercent > $1.cpuPercent }
+        // The process table is read by nobody while the panel is closed, and it is a quarter of
+        // what a sample costs: 5.3 ms of CPU for 1,500 processes, measured on the queue and at the
+        // spacing the app really uses. (The 1.3 ms this comment used to quote came from a loop
+        // on a performance core at full clock.) Closed, it runs every ten seconds — enough to keep
+        // a baseline, so the panel opens on a list at most that old and its first live figures are
+        // an average over at most that long, rather than on six blank rows.
+        if s.uptime - lastProcSample >= (detail ? 1 : 10) {
+            cachedProcs = procs.top(8)
             lastProcSample = s.uptime
         }
-        s.processes = Array(cachedProcs.prefix(8))
+        s.processes = cachedProcs
         return s
     }
 

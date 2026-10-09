@@ -53,7 +53,8 @@ final class Monitor: ObservableObject {
     /// lands carrying an empty sensor list, and would otherwise wipe the on-demand read that the
     /// panel just did.
     private(set) var sensorList: [Sensor] = []
-    private(set) var history: [String: [Double]] = ["cpu": [], "gpu": [], "power": [], "temp": [], "mem": []]
+    private(set) var history: [String: [Double]] = ["cpu": [], "gpu": [], "power": [], "temp": [], "mem": [],
+                                                    "netIn": [], "netOut": []]
     @Published private(set) var revision = 0
     @Published private(set) var error: AppError?
 
@@ -91,6 +92,7 @@ final class Monitor: ObservableObject {
     var isOpen = false {
         didSet {
             guard isOpen != oldValue else { return }
+            panelOpen.value = isOpen
             syncSensorPanel()
             if isOpen { bump() }
         }
@@ -100,6 +102,8 @@ final class Monitor: ObservableObject {
     /// a `DispatchQueue.main.sync` from the timer would deadlock the moment the main thread
     /// waited on anything the sampler holds.
     private let wantsAllSensors = LockedFlag()
+    /// Whether the panel is on screen, for the sampler: the process table only earns its cost then.
+    private let panelOpen = LockedFlag()
 
     var onUpdate: (() -> Void)?
     /// Supplied by the app delegate: pops the shared settings menu, anchored to the given view.
@@ -172,11 +176,14 @@ final class Monitor: ObservableObject {
         guard let sampler else { return }
         let iv = interval
         let t = DispatchSource.makeTimerSource(queue: queue)
-        t.schedule(deadline: .now() + 0.05, repeating: iv, leeway: .milliseconds(50))
-        let wantsAll = self.wantsAllSensors
+        // A tenth of the interval of leeway: nobody can tell a reading taken at 2.0 s from one
+        // taken at 2.2, and it lets the system fire this timer alongside others instead of waking
+        // a core for it alone.
+        t.schedule(deadline: .now() + 0.05, repeating: iv, leeway: .milliseconds(Int(iv * 100)))
+        let wantsAll = self.wantsAllSensors, open = self.panelOpen
         t.setEventHandler { [weak self] in
-            // Reading `isOpen` needs the main actor; capture it, then sample off it.
-            let s = sampler.sample(interval: iv, allSensors: wantsAll.value)
+            // Reading `isOpen` needs the main actor; the flags carry it across, then sample off it.
+            let s = sampler.sample(interval: iv, allSensors: wantsAll.value, detail: open.value)
             DispatchQueue.main.async { MainActor.assumeIsolated { self?.publish(s) } }
         }
         t.resume()
@@ -189,6 +196,7 @@ final class Monitor: ObservableObject {
         if !s.sensors.isEmpty { sensorList = s.sensors }
         push("cpu", s.cpuUsage); push("gpu", s.gpuUsage); push("power", s.sysPower)
         push("temp", s.cpuTempMax); push("mem", s.memory.usedRatio)
+        push("netIn", s.netInPerSec); push("netOut", s.netOutPerSec)
         onUpdate?()                 // the menu-bar glyph always refreshes
         if isOpen { bump() }        // the dashboard only when someone is looking
     }

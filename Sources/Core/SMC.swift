@@ -12,7 +12,7 @@ final class SMC {
     private static let keyDataSize = 80
 
     init?() {
-        guard var it = IOServiceIterator("AppleSMC") else { return nil }
+        guard let it = IOServiceIterator("AppleSMC") else { return nil }
         while let (entry, name) = it.next() {
             defer { IOObjectRelease(entry) }
             if name == "AppleSMCKeysEndpoint" {

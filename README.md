@@ -44,7 +44,12 @@ Two of these are worth calling out, because most menu-bar monitors do not have t
   every second, and ANE and DRAM are left out rather than shown as zero.
   [How, and how it was checked](docs/power-rails.md).
 - **Per-core residency.** Each bar is one physical core, frequency-weighted, with the efficiency and
-  performance clusters distinguished. Hover a bar for its exact frequency.
+  performance clusters distinguished. Hover a bar for its exact frequency. The load average sits
+  under the bars it describes — how many threads are running or waiting for one of those cores.
+
+The network card draws traffic over the same window as the sparklines above it, with the two
+figures it is made of underneath. It counts the machine's own links — Ethernet and Wi-Fi — and does
+not count the same bytes again through a VPN or a relay.
 
 ## The verdict, in one line
 
@@ -126,6 +131,9 @@ high it goes. That is not a stylistic choice: the thresholds this replaced calle
 through 147 consecutive samples of ordinary sustained work while macOS never said worse than
 *fair*, and ordinary browsing came within 2.5 °C of a red panel.
 [The measurements and the policy are in `docs/thermal-verdict.md`](docs/thermal-verdict.md).
+
+A magnitude that has turned amber stays amber until it is clearly below the line again — 3 °C for
+a die — so a core sitting at 95 °C does not make the wing blink.
 
 A calm reading is deliberately not coloured. It renders in the ordinary text ink, so colour in this
 interface always means *look at me* — you can tell at a glance from across the room whether anything
@@ -260,8 +268,9 @@ Power sys 85 W  cpu 0.5 W  gpu 38 W  ane 0.0 W  ram 0.6 W
 SSD   28.0°C  r 0 B/s  w 0 B/s  used 932 GB / 2.0 TB
 Fans  Fan 1 1351 rpm, Fan 2 1469 rpm
 Mem   41.2 GB / 64.0 GB  swap 0.0 GB  pressure 78
-Net   ↓ 3.9 MB/s  ↑ 46.0 KB/s
-Batt  80% +0.0 W 30.1 °C cycles 11
+Net   ↓ 3.9 MB/s  ↑ 46.0 KB/s  en0
+Load  2.41  2.12  1.98
+Batt  80% +0.0 W 30.1°C cycles 11
 ```
 
 `--json` emits one object per line, including every sensor, for piping into something else.
@@ -269,27 +278,29 @@ Add `--loop` to keep going.
 
 ## What it costs to run
 
-Measured on an M4 Max with `Tools/bench`, per sample:
+Measured on an M4 Max under macOS 27.0.1 on 2026-10-10, panel closed, default 2-second refresh,
+full menu-bar text, over 60 s with `proc_pid_rusage`: **1.5–1.8 % of one core**, 18 MB.
 
-| Path | Cost |
-|---|---|
-| Normal | **19 ms** |
-| With the "all sensors" panel open | 82 ms |
+About 11 ms of CPU per sample is the sampler (`Tools/bench`, on the app's own queue and spacing);
+about as much again is the menu bar being redrawn with the new figures. A longer interval costs
+proportionally less.
 
-Steady state with the dashboard closed, measured over 60 s with `proc_pid_rusage`: **1.1 % of one
-core**, ~90 MB resident.
-
-Three findings shaped that, and each contradicted the obvious guess:
+Four findings shaped that, and each contradicted the obvious guess:
 
 - **IOHID costs about 0.22 ms per sensor per read** — 45 ms for a full sweep of ~200 services. The
   client and service list are built once, and only the sensors actually consumed (SSD, battery) are
   read each sample. The full sweep runs only while the sensor panel is open.
-- **SMC exposes ~190 temperature keys**, most of them on parked clusters reporting an exact 40.0 °C
-  placeholder or a sub-ambient value. Keys are classified at startup and re-classified every 60 s,
-  and only the live subset is read. Checked against a full sweep: identical maximum, average within
-  1.6 °C.
-- **The process table costs 1.3 ms** for every PID on the system — the cheapest source in the app,
-  despite looking like the most expensive. It always runs.
+- **SMC exposes ~190 temperature keys**, many of them on parked clusters reporting an exact 40.0 °C
+  placeholder, zero, or a sub-ambient value. Keys are kept by type and the live subset is
+  re-classified every 10 s. Checked against a full sweep: identical maximum and average.
+- **The process table is a quarter of a sample** — 5.3 ms for 1,500 processes on an efficiency
+  core. It runs every sample while the panel is open and every ten seconds while it is closed.
+- **A tight loop is the wrong benchmark.** It runs on a performance core at full clock, where the
+  app's queue is given an efficiency core at idle speed: the same sample read 8.9 ms in a loop and
+  19.7 ms in the app. The figures this section used to quote came from such a loop.
+
+[What each source costs, the leak that ended the app after six days, and three readings that were
+wrong until 1.6.0, are in `docs/sampling.md`](docs/sampling.md).
 
 ## How it is put together
 
@@ -320,6 +331,8 @@ window is 89 samples — the integer approximation of φ that the wing's own arm
 ```bash
 "build/PWE Monitor.app/Contents/MacOS/pwemon" --snapshot docs          # render the UI to PNG
 "build/PWE Monitor.app/Contents/MacOS/pwemon" --popover-test           # popover sizing check
+"build/PWE Monitor.app/Contents/MacOS/pwemon" --portcheck              # 200 samples must not cost a Mach port
+swiftc -O Sources/Core/*.swift Tools/bench/main.swift -o /tmp/b && /tmp/b        # what a sample costs
 swiftc -O Sources/Core/*.swift Tools/thresholds/main.swift -o /tmp/t && /tmp/t   # threshold sweep
 swiftc -O Tools/loccheck/main.swift -o /tmp/l && /tmp/l .                   # string tables
 ```

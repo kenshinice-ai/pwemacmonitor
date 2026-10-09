@@ -5,6 +5,7 @@ import SwiftUI
 enum PWEMacMonitorMain {
     static func main() {
         let args = CommandLine.arguments
+        if args.contains("--portcheck") { exit(CLI.portCheck()) }
         if args.contains("--probe") || args.contains("--json") { CLI.run(json: args.contains("--json"), loop: args.contains("--loop")); return }
         let app = NSApplication.shared
         let delegate = AppDelegate()
@@ -444,6 +445,31 @@ enum CLI {
         } while loop
     }
 
+    /// `pwemon --portcheck`: take two hundred samples and count this process's Mach ports before
+    /// and after. Run by `Tools/release.sh` before anything is built to ship.
+    ///
+    /// Every release up to 1.5.2 leaked one port per sample on a Mac with a battery, and the
+    /// kernel ends a process at about 267,700 of them: the app disappeared from the menu bar
+    /// after six days, with no crash report to say why. Nothing in an ordinary test run is long
+    /// enough to notice that, so this asks the question directly. A handful of ports either way
+    /// is the system's own business; one per sample is two hundred.
+    static func portCheck(samples: Int = 200) -> Int32 {
+        guard let sampler = Sampler() else {
+            print("portcheck: hardware sources unavailable (Apple Silicon required)")
+            return 1
+        }
+        // Warm up first: the sources open their connections on first use, and that is not a leak.
+        for _ in 0..<5 { _ = sampler.sample(interval: 0, allSensors: true) }
+        _ = sampler.readAllSensors()
+        let before = machPortCount()
+        for i in 0..<samples { _ = sampler.sample(interval: 0, allSensors: i % 2 == 0) }
+        _ = sampler.readAllSensors()
+        let grown = machPortCount() - before
+        let ok = before > 0 && grown < 16
+        print("portcheck: \(samples) samples, \(before) Mach ports before, \(grown >= 0 ? "+" : "")\(grown) after — \(ok ? "ok" : "LEAK")")
+        return ok ? 0 : 1
+    }
+
     static func summary(_ s: Snapshot, soc: SocInfo) -> String {
         """
         \(soc.chipName) · \(soc.memoryGB) GB · \(soc.ecpuLabel)\(soc.ecpuCores)+\(soc.pcpuLabel)\(soc.pcpuCores) · GPU \(soc.gpuCores)
@@ -453,7 +479,8 @@ enum CLI {
         SSD   \(Fmt.temp1(s.ssdTemp))  r \(Fmt.rate(s.diskReadPerSec))  w \(Fmt.rate(s.diskWritePerSec))  used \(Fmt.bytes(Double(s.disk.total - s.disk.free))) / \(Fmt.bytes(Double(s.disk.total)))
         Fans  \(s.fans.map { "\($0.id) \($0.rpm) rpm" }.joined(separator: ", "))
         Mem   \(Fmt.gib(s.memory.used)) / \(Fmt.gib(s.memory.total))  swap \(Fmt.gib(s.memory.swapUsed))  pressure \(s.memory.pressure)
-        Net   ↓ \(Fmt.rate(s.netInPerSec))  ↑ \(Fmt.rate(s.netOutPerSec))
+        Net   ↓ \(Fmt.rate(s.netInPerSec))  ↑ \(Fmt.rate(s.netOutPerSec))\(s.network.primaryInterface.isEmpty ? "" : "  \(s.network.primaryInterface)")
+        Load  \(String(format: "%.2f  %.2f  %.2f", s.loadAvg.0, s.loadAvg.1, s.loadAvg.2))
         Batt  \(s.battery.present ? "\(s.battery.percent)% \(String(format: "%+.1f", s.battery.watts)) W \(Fmt.temp1(s.battery.temperature)) cycles \(s.battery.cycles)" : "none")
         """
     }

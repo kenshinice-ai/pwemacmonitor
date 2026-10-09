@@ -132,6 +132,62 @@ require(src(0, false, 7.5) == (7.5, .clusterHistogram), "no live counter: histog
 require(src(40, true, nil) == (40, .energyModel), "no histogram on this machine: trust the counter")
 require(src(0, false, nil) == (0, .none), "neither: nothing to report")
 
+// ── a magnitude on its threshold holds its band (1.6.0) ──
+// The recording that prompted this: the hottest core at 94–96 °C under a steady load, and the
+// verdict changing nine times in forty seconds. Replay a reading that hovers and count the changes.
+print("── a reading hovering on its threshold ──")
+func bands(_ temps: [Double], holding: Bool) -> [Health] {
+    var held: Set<Magnitude> = [], out: [Health] = []
+    for t in temps {
+        var s = Snapshot(); s.cpuTempMax = t
+        if holding { held = s.holding(after: held, chipClass: chip); s.held = held }
+        let band = s.channels(chipClass: chip)[Channel.cpu.rawValue].band
+        // The mark, the menu-bar figure and the THERMALS row all read the same latch.
+        require(band == s.cpuTempMaxHealth, "held: channel says \(band.word), the reading's own grade says \(s.cpuTempMaxHealth.word) at \(t) °C")
+        out.append(band)
+    }
+    return out
+}
+func changes(_ b: [Health]) -> Int { zip(b, b.dropFirst()).filter { $0 != $1 }.count }
+let hover: [Double] = [93.8, 95.2, 94.6, 95.4, 94.1, 95.0, 94.9, 95.6, 94.3, 95.1, 94.7, 92.4, 91.5, 90.0]
+let loose = bands(hover, holding: false), firm = bands(hover, holding: true)
+print("  \(hover.count) samples between 90 and 96 °C: \(changes(loose)) band changes without the hold, \(changes(firm)) with it")
+require(changes(loose) >= 8, "the replay no longer reproduces the flicker it was written from")
+require(changes(firm) == 2, "held: expected calm → warm → calm, got \(changes(firm)) changes")
+require(firm[1] == .warm && firm[10] == .warm, "held: warm must last while the reading stays above the release line")
+require(firm[11] == .warm, "held: 92.4 °C is inside the 3 °C release margin and must still be warm")
+require(firm[12] == .calm, "held: 91.5 °C is clear of the margin and must let go")
+var heldFill = Snapshot(); heldFill.cpuTempMax = 93; heldFill.held = [.cpuTempMax]
+require(abs(heldFill.channels(chipClass: chip)[Channel.cpu.rawValue].fill - Health.warmMark) < 1e-9, "a held feather must stand on the warm mark")
+// Holding never lifts anything to hot, and never applies to a reading that was not warm before.
+var coldStart = Snapshot(); coldStart.cpuTempMax = 93
+require(coldStart.holding(after: [], chipClass: chip).isEmpty, "93 °C that was never warm must not be held")
+var heldAll = Snapshot(); heldAll.held = Set(Magnitude.allCases)
+require(heldAll.overall(chipClass: chip) == .warm, "every magnitude held must read warm, not hot")
+// Power: warm from 85 % of the envelope, released under 80 %.
+let env = Snapshot.powerEnvelope(chip)
+var pw = Snapshot(); pw.sysPower = env * 0.82
+require(pw.holding(after: [.power], chipClass: chip) == [.power], "power at 82 % of the envelope stays held")
+pw.sysPower = env * 0.79
+require(pw.holding(after: [.power], chipClass: chip).isEmpty, "power at 79 % of the envelope lets go")
+
+// ── network: differences of 32-bit counters, and which link is named (1.6.0) ──
+print("── network counters ──")
+require(NetworkSampler.moved(from: 1_000, to: 5_000) == 4_000, "an ordinary difference")
+require(NetworkSampler.moved(from: 4_294_967_000, to: 704) == 1_000, "a counter that wrapped past 2^32 still moved 1,000 bytes")
+require(NetworkSampler.moved(from: 1_000_000_000, to: 12) == 0, "a counter that fell by more than half its range was reset, not wrapped")
+require(["en0", "en13", "awdl0", "llw0", "pdp_ip0"].allSatisfy(NetworkSampler.counts), "physical links are counted")
+require(!["lo0", "utun4", "bridge0", "anri2", "ap1", "anpi0", "gif0", "stf0", "ipsec0", "vmenet0", "nan0"].contains(where: NetworkSampler.counts),
+        "tunnels, bridges and relays ride on a link that is already counted")
+func pick(_ cur: String, _ c: [String], _ a: [String: Double]) -> String { NetworkSampler.choose(current: cur, candidates: c, activity: a) }
+require(pick("", ["en0", "en5"], [:]) == "en0", "with nothing moving, the first link with an address")
+require(pick("en0", ["en0", "en5"], ["en0": 900, "en5": 3_000]) == "en0", "idle chatter does not move the name")
+require(pick("en0", ["en0", "en5"], ["en0": 40_000, "en5": 60_000]) == "en0", "a link has to be clearly out-carried")
+require(pick("en0", ["en0", "en5"], ["en0": 40_000, "en5": 900_000]) == "en5", "the link doing the work is named")
+require(pick("en0", ["en5"], ["en5": 0]) == "en5", "a link that has gone is not named")
+require(pick("en0", [], [:]) == "", "no link, no name")
+print("  wrap, reset, link filter and the choice of link all hold")
+
 print(bad == 0 ? "✓ \(checked) assertions, magnitudes capped and verdicts intact"
                : "✗ \(bad) failures out of \(checked)")
 exit(bad == 0 ? 0 : 1)

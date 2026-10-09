@@ -55,9 +55,11 @@ final class IOHIDSensors {
     }
 
     /// Sensors come and go (an external display, a disconnected battery), so the list is rebuilt
-    /// occasionally rather than never.
+    /// occasionally rather than never. Ten minutes, not one: every rebuild opens a new connection
+    /// to the HID event system and closes the old one, and WindowServer writes the whole service
+    /// list into the system log each time it does.
     private func refreshIfStale() {
-        if ProcessInfo.processInfo.systemUptime - servicesLoadedAt > 60 { loadServices() }
+        if ProcessInfo.processInfo.systemUptime - servicesLoadedAt > 600 { loadServices() }
     }
 
     /// Names of every temperature service on this machine.
