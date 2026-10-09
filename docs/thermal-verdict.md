@@ -117,7 +117,7 @@ On a chip that never reaches 95 °C the die channels simply stay calm, which is 
 
 `Tools/thresholds` holds the line that makes this acceptable: it sweeps 0–200 °C and 0–400 W with
 macOS reporting nominal and **fails the build if any magnitude reaches hot**, then checks that all
-seven verdicts still do. 80,291 assertions.
+seven verdicts still do. 80,295 assertions.
 
 ## Re-measuring on another chip
 

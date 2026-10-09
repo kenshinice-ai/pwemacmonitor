@@ -505,7 +505,13 @@ final class Sampler {
         classifyLiveKeys(now: 0)
 
         if let hid {
-            let needsDieFromHID = smcCPUKeys.isEmpty || smcGPUKeys.isEmpty
+            // "Has none" means none that reads, as it always did — the key set is no longer
+            // filtered by value, so the question is asked here instead. A Mac whose SMC lists die
+            // keys and answers zero on all of them still needs its dies from IOHID.
+            func reads(_ keys: [String]) -> Bool {
+                keys.contains { k in smc?.readFloat(k).map { $0 > 0 && $0 < 150 } ?? false }
+            }
+            let needsDieFromHID = !reads(smcCPUKeys) || !reads(smcGPUKeys)
             for name in hid.sensorNames {
                 let upper = name.uppercased(), lower = name.lowercased()
                 if upper.contains("NAND") || lower.contains("battery") || lower.contains("gas gauge") {
@@ -710,7 +716,9 @@ final class Sampler {
         // on a performance core at full clock.) Closed, it runs every ten seconds — enough to keep
         // a baseline, so the panel opens on a list at most that old and its first live figures are
         // an average over at most that long, rather than on six blank rows.
-        if s.uptime - lastProcSample >= (detail ? 1 : 10) {
+        // Half a second, not one: at the 1 s setting the timer's leeway can bring two ticks a
+        // shade under a second apart, and the table would then skip every other one.
+        if s.uptime - lastProcSample >= (detail ? 0.5 : 10) {
             cachedProcs = procs.top(8)
             lastProcSample = s.uptime
         }

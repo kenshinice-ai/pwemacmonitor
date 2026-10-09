@@ -51,7 +51,9 @@ unseen. Keys are now kept by type, and the live subset is re-classified every 10
 
 - An unprivileged process is given interface byte counters truncated to 32 bits, whichever API it
   asks. The Wi-Fi link had carried 118.6 GB and read 2.6 GB. Totals are therefore meaningless;
-  differences are taken per link in 32-bit arithmetic, where a wrap comes out right. Before, the
+  differences are taken per link in 32-bit arithmetic, where a wrap comes out right — and a
+  counter that fell because its adapter was re-attached is told apart by its packet count having
+  fallen too. Before, the
   links were summed first, and the rate printed zero whenever any one of them passed a multiple of
   4.29 GB.
 - A VPN's `utun`, a relay's `anri` and the Thunderbolt bridge report the same bytes as the adapter

@@ -97,7 +97,7 @@ struct NetworkStats {
 /// truncated to 32 bits, whichever API it asks — `getifaddrs` and the `NET_RT_IFLIST2` sysctl
 /// with its 64-bit fields return the same wrapped number. The Wi-Fi link had carried 118.6 GB and
 /// read 2.6 GB. So a total is meaningless and only a difference can be trusted: taken per link,
-/// in 32-bit arithmetic, where a wrap comes out right by itself. Summing first and subtracting
+/// in 32-bit arithmetic, where a wrap comes out right by itself (see `moved`). Summing first and subtracting
 /// after, as before, printed a zero every time any one link passed a multiple of 4.29 GB.
 ///
 /// **Tunnels were counted on top of the link they run over.** A VPN's `utun`, a relay's `anri`
@@ -114,7 +114,8 @@ final class NetworkSampler {
         var inPerSec = 0.0, outPerSec = 0.0
     }
 
-    private var previous: [String: (rx: UInt32, tx: UInt32)] = [:]
+    private typealias Counters = (rx: UInt32, tx: UInt32, rxPackets: UInt32, txPackets: UInt32)
+    private var previous: [String: Counters] = [:]
     private var previousTime: TimeInterval = 0
     /// Smoothed bytes per second, both directions, per link.
     private var activity: [String: Double] = [:]
@@ -124,13 +125,16 @@ final class NetworkSampler {
         ["en", "awdl", "llw", "pdp_ip"].contains { name.hasPrefix($0) }
     }
 
-    /// Bytes moved between two readings of a 32-bit counter. A counter that went backwards has
-    /// wrapped, and the wrapping subtraction is already the right answer — unless the answer is
-    /// more than half the counter's range, which no link here moves in one interval: that is an
-    /// adapter that was reset, and it counts as nothing.
-    static func moved(from old: UInt32, to new: UInt32) -> UInt64 {
-        let d = new &- old
-        return d > UInt32.max / 2 ? 0 : UInt64(d)
+    /// Bytes moved between two readings of a 32-bit counter.
+    ///
+    /// A counter that went backwards has either wrapped or been reset — an adapter re-attached
+    /// under the same name starts again from nothing — and the byte count alone cannot say which.
+    /// The packet counter can: it wraps once in several terabytes, so if it went backwards too
+    /// the adapter was reset, and that sample counts as nothing. Otherwise the wrapping
+    /// subtraction is already the right answer, however large.
+    static func moved(from old: UInt32, to new: UInt32, packetsFrom oldPackets: UInt32, to newPackets: UInt32) -> UInt64 {
+        if new >= old { return UInt64(new - old) }
+        return newPackets < oldPackets ? 0 : UInt64(new &- old)
     }
 
     /// Which link to name. The one in use stays unless another carries twice as much and more
@@ -151,13 +155,16 @@ final class NetworkSampler {
         guard getifaddrs(&ifap) == 0, let first = ifap else { return r }
         defer { freeifaddrs(ifap) }
 
-        var counters: [String: (rx: UInt32, tx: UInt32)] = [:]
+        var counters: [String: Counters] = [:]
         var addresses: [String: String] = [:]
-        var order: [String] = []
+        var order: [String] = [], bridges: [String] = []
         for p in sequence(first: first, next: { $0.pointee.ifa_next }) {
             let ifa = p.pointee
             let name = String(cString: ifa.ifa_name)
-            guard Self.counts(name), let addr = ifa.ifa_addr else { continue }
+            // A bridge is never counted — its members are — but on a Mac whose only network is
+            // the Thunderbolt bridge it is the bridge that holds the address.
+            let bridge = name.hasPrefix("bridge")
+            guard Self.counts(name) || bridge, let addr = ifa.ifa_addr else { continue }
 
             if addr.pointee.sa_family == UInt8(AF_INET) {
                 let up = Int32(ifa.ifa_flags) & (IFF_UP | IFF_RUNNING) == (IFF_UP | IFF_RUNNING)
@@ -166,11 +173,11 @@ final class NetworkSampler {
                 if getnameinfo(addr, socklen_t(addr.pointee.sa_len), &host, socklen_t(host.count),
                                nil, 0, NI_NUMERICHOST) == 0 {
                     addresses[name] = String(cString: host)
-                    order.append(name)
+                    if bridge { bridges.append(name) } else { order.append(name) }
                 }
-            } else if addr.pointee.sa_family == UInt8(AF_LINK), let data = ifa.ifa_data {
+            } else if !bridge, addr.pointee.sa_family == UInt8(AF_LINK), let data = ifa.ifa_data {
                 let d = data.assumingMemoryBound(to: if_data.self).pointee
-                counters[name] = (d.ifi_ibytes, d.ifi_obytes)
+                counters[name] = (d.ifi_ibytes, d.ifi_obytes, d.ifi_ipackets, d.ifi_opackets)
             }
         }
 
@@ -180,7 +187,8 @@ final class NetworkSampler {
             for (name, c) in counters {
                 // A link seen for the first time has no baseline; it starts counting next sample.
                 guard let p = previous[name] else { continue }
-                let i = Self.moved(from: p.rx, to: c.rx), o = Self.moved(from: p.tx, to: c.tx)
+                let i = Self.moved(from: p.rx, to: c.rx, packetsFrom: p.rxPackets, to: c.rxPackets)
+                let o = Self.moved(from: p.tx, to: c.tx, packetsFrom: p.txPackets, to: c.txPackets)
                 rx += i; tx += o
                 activity[name] = (activity[name] ?? 0) * 0.7 + Double(i + o) / dt * 0.3
             }
@@ -192,9 +200,11 @@ final class NetworkSampler {
         previousTime = now
 
         // 169.254.x.x is an address a link gave itself for want of a network — a tethered phone,
-        // a cable to nothing. It stays a candidate, behind every link with a real address.
+        // a cable to nothing. It stays a candidate, behind every link with a real address; and a
+        // bridge is named only when nothing else has an address at all.
         let candidates = order.filter { !(addresses[$0] ?? "").hasPrefix("169.254.") }
                        + order.filter { (addresses[$0] ?? "").hasPrefix("169.254.") }
+                       + bridges
         primary = Self.choose(current: primary, candidates: candidates, activity: activity)
         r.stats.primaryInterface = primary
         r.stats.primaryAddress = addresses[primary] ?? ""

@@ -888,7 +888,7 @@ struct TrafficTrace: View {
             }
             .stroke(downColor.opacity(0.25), lineWidth: 1)
             // Same rule as `Sparkline`: below a readable footprint, the baseline and nothing else.
-            if down.count >= Sparkline.minimumSamples {
+            if down.count >= Sparkline.minimumSamples, up.count == down.count {
                 let d = points(down, top, g.size), u = points(up, top, g.size)
                 Path { p in
                     p.move(to: CGPoint(x: d[0].x, y: g.size.height))

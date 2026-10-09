@@ -72,12 +72,18 @@ final class IOHIDSensors {
         refreshIfStale()
         var out: [(String, Double)] = []
         out.reserveCapacity(wanted?.count ?? services.count)
+        var unanswered = false
         for (svc, name) in services {
             if let wanted, !wanted.contains(name) { continue }
-            guard let ev = fEvent(svc, Self.eventTypeTemperature, 0, 0)?.takeRetainedValue() else { continue }
+            guard let ev = fEvent(svc, Self.eventTypeTemperature, 0, 0)?.takeRetainedValue() else { unanswered = true; continue }
             let t = fFloat(ev, Self.eventTypeTemperature << 16)
             if t > 0, t <= 150 { out.append((name, t)) }
         }
+        // A sensor that was asked for and did not answer may be a service that has gone — the
+        // SSD and battery readings ride on this list, and ten minutes is a long time for the
+        // battery verdict to be blind. Rebuild early, though never more than once a minute: a
+        // sensor that never answers must not bring the old cost back.
+        if unanswered, wanted != nil, ProcessInfo.processInfo.systemUptime - servicesLoadedAt > 60 { loadServices() }
         return out.sorted { $0.0 < $1.0 }
     }
 }

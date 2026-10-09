@@ -173,9 +173,12 @@ require(pw.holding(after: [.power], chipClass: chip).isEmpty, "power at 79 % of 
 
 // ── network: differences of 32-bit counters, and which link is named (1.6.0) ──
 print("── network counters ──")
-require(NetworkSampler.moved(from: 1_000, to: 5_000) == 4_000, "an ordinary difference")
-require(NetworkSampler.moved(from: 4_294_967_000, to: 704) == 1_000, "a counter that wrapped past 2^32 still moved 1,000 bytes")
-require(NetworkSampler.moved(from: 1_000_000_000, to: 12) == 0, "a counter that fell by more than half its range was reset, not wrapped")
+func moved(_ a: UInt32, _ b: UInt32, _ pa: UInt32, _ pb: UInt32) -> UInt64 { NetworkSampler.moved(from: a, to: b, packetsFrom: pa, to: pb) }
+require(moved(1_000, 5_000, 10, 14) == 4_000, "an ordinary difference")
+require(moved(100, 3_500_000_100, 10, 2_400_000) == 3_500_000_000, "a fast link moving most of the counter's range in one interval is still counted")
+require(moved(4_294_967_000, 704, 900_000, 900_001) == 1_000, "a counter that wrapped past 2^32 still moved 1,000 bytes")
+require(moved(3_500_000_000, 12, 2_400_000, 1) == 0, "bytes and packets both fell: the adapter was reset, and that is not traffic")
+require(moved(1_000_000_000, 12, 700_000, 0) == 0, "a reset from a low count is not traffic either")
 require(["en0", "en13", "awdl0", "llw0", "pdp_ip0"].allSatisfy(NetworkSampler.counts), "physical links are counted")
 require(!["lo0", "utun4", "bridge0", "anri2", "ap1", "anpi0", "gif0", "stf0", "ipsec0", "vmenet0", "nan0"].contains(where: NetworkSampler.counts),
         "tunnels, bridges and relays ride on a link that is already counted")
@@ -186,6 +189,8 @@ require(pick("en0", ["en0", "en5"], ["en0": 40_000, "en5": 60_000]) == "en0", "a
 require(pick("en0", ["en0", "en5"], ["en0": 40_000, "en5": 900_000]) == "en5", "the link doing the work is named")
 require(pick("en0", ["en5"], ["en5": 0]) == "en5", "a link that has gone is not named")
 require(pick("en0", [], [:]) == "", "no link, no name")
+require(pick("", ["en0", "bridge0"], [:]) == "en0", "a bridge is named only when nothing else has an address")
+require(pick("", ["bridge0"], [:]) == "bridge0", "a Mac whose only network is the Thunderbolt bridge still shows its address")
 print("  wrap, reset, link filter and the choice of link all hold")
 
 print(bad == 0 ? "✓ \(checked) assertions, magnitudes capped and verdicts intact"
