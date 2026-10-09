@@ -351,9 +351,10 @@ struct DashboardView: View {
                 kv(L("row.up", "Up"), Fmt.rate(s.netOutPerSec), swatch: Theme.series(2, dark))
             }
             // Always the row, whatever is in it: a card that loses a row when the Wi-Fi drops
-            // makes the whole panel jump.
+            // makes the whole panel jump. A dash, as for any reading that is absent — not "not
+            // connected", which a Mac on an IPv6-only network would be told while it was online.
             let address = kv(L("row.address", "Address"),
-                             s.network.primaryAddress.isEmpty ? L("value.offline", "not connected") : s.network.primaryAddress,
+                             s.network.primaryAddress.isEmpty ? "—" : s.network.primaryAddress,
                              color: s.network.primaryAddress.isEmpty ? Theme.muted(dark) : nil)
             if wide {
                 HStack(alignment: .top, spacing: Theme.s3) { throughput; VStack(spacing: 5) { trace; address } }

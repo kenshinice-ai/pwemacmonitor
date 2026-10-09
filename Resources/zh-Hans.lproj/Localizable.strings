@@ -136,7 +136,6 @@
 "value.noReading" = "无读数";
 "value.normal" = "正常";
 "value.of" = "/ %@";
-"value.offline" = "未连接";
 "value.onBattery" = "电池供电";
 "value.onPower" = "外接电源";
 "value.reading" = "读取中…";

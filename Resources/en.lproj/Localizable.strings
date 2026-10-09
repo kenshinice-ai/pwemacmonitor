@@ -126,7 +126,6 @@
 "value.noReading" = "no reading";
 "value.normal" = "Normal";
 "value.of" = "of %@";
-"value.offline" = "not connected";
 "value.onBattery" = "on battery";
 "value.onPower" = "on power";
 "value.reading" = "Reading…";
