@@ -49,6 +49,14 @@ columns of two, FANS side by side. Measured with `PWEMON_HARDWARE`, English:
 | Mac mini / Studio / iMac | thermals\|memory · fans\|storage · network (wide) | 1006 pt |
 | MacBook Air | thermals\|memory · battery\|storage · network (wide) | 1016 pt |
 
+Measured again on 2026-10-10 for 1.6.0, from `--snapshot`: 1024, 978 and 988 pt in English, and
+1038, 992 and 1002 pt in Chinese. The 1.5.2 renders give the same six numbers, so the figures in
+the table above were already out of date by then; they are left as the record of that round.
+
+1.6.0 changed what is in the NETWORK card and not how tall it is. It is still four rows: the
+traffic trace took the row the load average had, and the address row now stays when there is no
+address. The load average is in the legend row under the core bars, which had the room.
+
 This also retires the reason 1.3.0 grouped Panel Sections by row: hiding one card now reflows the
 rest instead of padding its partner, so the switches are per card.
 

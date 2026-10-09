@@ -230,6 +230,19 @@ publishes the GitHub release and updates the Homebrew cask. It refuses to start 
 identity and the notarisation credentials are both present, rather than discovering that halfway
 through.
 
+Before it builds anything to ship it runs three checks, and stops on the first that fails:
+
+| Check | What it proves |
+|---|---|
+| `pwemon --updatecheck` | The update request sends product, version and OS, and nothing else. |
+| `pwemon --portcheck` | Two hundred samples do not cost a Mach port. [Why that one exists](docs/sampling.md). |
+| `Tools/thresholds` | Every band in the interface, across every reachable reading. |
+
+> ⚠️ Run it with the Mac unlocked, and keep it unlocked until it finishes. With the screen locked
+> `notarytool` cannot read its stored profile, and the script stops at preflight saying the
+> credentials are missing. They are not missing: the keychain does not release them to a locked
+> session. Met on 2026-10-10, releasing 1.6.0.
+
 Two pieces of one-time setup are needed first, and only the account holder can do them because both
 involve Apple credentials:
 
@@ -247,8 +260,9 @@ involve Apple credentials:
    It prompts for an app-specific password, which you create at
    [appleid.apple.com](https://appleid.apple.com) under *Sign-In and Security*.
 
-`Tools/release.sh` is the only thing that publishes. CI builds every push to `main` as a check and
-stops there — it has no signing identity, so anything it produced would be ad-hoc signed. It once
+`Tools/release.sh` is the only thing that publishes. CI (`.github/workflows/build.yml`) builds every
+push to `main` as a check and stops there — it has no signing identity, so anything it produced
+would be ad-hoc signed, and its token is read-only. It once
 raced a release and overwrote a notarised disk image with an unsigned one, which is why it no
 longer touches releases at all.
 

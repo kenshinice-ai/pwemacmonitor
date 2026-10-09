@@ -58,6 +58,10 @@ same thing whether the channel counts watts or degrees.
 The thresholds themselves are unchanged — `Health.strain` is calibrated so each channel's warm and
 hot points land exactly where the existing `*Health` properties put them.
 
+Since 1.6.0 a magnitude that has reached warm holds there until it is clearly below the threshold
+again, and its feather stands on the warm mark meanwhile. That is the only state a band has; the
+rule and the recording that prompted it are in [`thermal-verdict.md`](thermal-verdict.md).
+
 ## What the menu bar can and cannot carry
 
 The design called for all five colours everywhere. At 22 pt it does not work.
