@@ -1,0 +1,166 @@
+{
+  "lang": "en",
+  "music_db": -19,
+  "takes": {
+    "p": "p-en",
+    "m": "m-en",
+    "d": "d-en",
+    "f": "f-en"
+  },
+  "title": [
+    "Which part of your Mac",
+    "is working?"
+  ],
+  "sample_tag": "Real readings from an M4 Max under full load · waits shortened",
+  "end": {
+    "headline": "PWE Monitor",
+    "with_cues": {
+      "c11": [
+        "One file. Free. Open source.",
+        "English and Simplified Chinese"
+      ]
+    },
+    "foot": [
+      "macOS 14 or later · Apple Silicon",
+      "",
+      "pwestudio.site/macmonitor"
+    ]
+  },
+  "cues": [
+    {
+      "id": "c01",
+      "dur": 2.6,
+      "parts": [
+        {
+          "say": "",
+          "show": "A monitor that reports through its own mark"
+        }
+      ]
+    },
+    {
+      "id": "c02",
+      "dur": 3.2,
+      "parts": [
+        {
+          "say": "",
+          "show": "It lives beside your clock"
+        }
+      ]
+    },
+    {
+      "id": "c03",
+      "dur": 3.4,
+      "parts": [
+        {
+          "say": "",
+          "show": "Start real work: the numbers move at once"
+        }
+      ]
+    },
+    {
+      "id": "c04",
+      "dur": 4.4,
+      "parts": [
+        {
+          "say": "",
+          "show": "Each core, and power against the chip's limit"
+        }
+      ]
+    },
+    {
+      "id": "c05",
+      "dur": 3.6,
+      "parts": [
+        {
+          "say": "",
+          "show": "Busy is not trouble: the wing stays calm"
+        }
+      ]
+    },
+    {
+      "id": "c06",
+      "dur": 4.4,
+      "parts": [
+        {
+          "say": "",
+          "show": "When heat builds, colour runs out the feather"
+        }
+      ]
+    },
+    {
+      "id": "c07",
+      "dur": 3.0,
+      "parts": [
+        {
+          "say": "",
+          "show": "The same wing, up in the menu bar"
+        }
+      ]
+    },
+    {
+      "id": "c08",
+      "dur": 2.6,
+      "parts": [
+        {
+          "say": "",
+          "show": "The work stops, and it settles"
+        }
+      ]
+    },
+    {
+      "id": "c09",
+      "dur": 2.4,
+      "parts": [
+        {
+          "say": "",
+          "show": "On a desktop Mac: no battery card"
+        }
+      ]
+    },
+    {
+      "id": "c10",
+      "dur": 2.4,
+      "parts": [
+        {
+          "say": "",
+          "show": "On a fanless Mac: no fan card"
+        }
+      ]
+    },
+    {
+      "id": "c11",
+      "dur": 2.0,
+      "parts": [
+        {
+          "say": "",
+          "show": ""
+        }
+      ]
+    }
+  ],
+  "overrides": {
+    "panel-wait": {
+      "in": 12.0,
+      "out": 44.0,
+      "speed": 8
+    },
+    "panel-warm": {
+      "in": 44.0,
+      "out": 49.5
+    },
+    "panel-warm-out": {
+      "in": 49.5,
+      "out": 49.5
+    },
+    "bar-warm": {
+      "in": 53.0,
+      "out": 56.5
+    },
+    "panel-settle": {
+      "in": 59.0,
+      "out": 64.0,
+      "speed": 2
+    }
+  },
+  "overrides_note": "Times that depend on when this take ran warm: tools/warm.py build/raw/p-en.mov gave calm until 46.29 s, warm (with one second of calm at 51.18) to 61.16 s, load off at 60.04 s."
+}

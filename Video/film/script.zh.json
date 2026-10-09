@@ -1,0 +1,166 @@
+{
+  "lang": "zh",
+  "music_db": -19,
+  "takes": {
+    "p": "p-zh",
+    "m": "m-zh",
+    "d": "d-zh",
+    "f": "f-zh"
+  },
+  "title": [
+    "你的 Mac",
+    "哪里在用力?"
+  ],
+  "sample_tag": "M4 Max 满载下的真实读数 · 等待过程有加速",
+  "end": {
+    "headline": "PWE Monitor",
+    "with_cues": {
+      "c11": [
+        "一个文件。免费。开源。",
+        "简体中文与 English"
+      ]
+    },
+    "foot": [
+      "macOS 14 及以上 · Apple Silicon",
+      "",
+      "pwestudio.site/macmonitor"
+    ]
+  },
+  "cues": [
+    {
+      "id": "c01",
+      "dur": 2.6,
+      "parts": [
+        {
+          "say": "",
+          "show": "用自己的标识汇报状态的硬件监视器"
+        }
+      ]
+    },
+    {
+      "id": "c02",
+      "dur": 3.2,
+      "parts": [
+        {
+          "say": "",
+          "show": "它就住在时钟旁边"
+        }
+      ]
+    },
+    {
+      "id": "c03",
+      "dur": 3.4,
+      "parts": [
+        {
+          "say": "",
+          "show": "开始干活,数字立刻跟上"
+        }
+      ]
+    },
+    {
+      "id": "c04",
+      "dur": 4.4,
+      "parts": [
+        {
+          "say": "",
+          "show": "每个核心,和芯片自己的功耗上限"
+        }
+      ]
+    },
+    {
+      "id": "c05",
+      "dur": 3.6,
+      "parts": [
+        {
+          "say": "",
+          "show": "忙不等于有事:翅膀依然平静"
+        }
+      ]
+    },
+    {
+      "id": "c06",
+      "dur": 4.4,
+      "parts": [
+        {
+          "say": "",
+          "show": "热起来了,颜色沿着羽毛往外走"
+        }
+      ]
+    },
+    {
+      "id": "c07",
+      "dur": 3.0,
+      "parts": [
+        {
+          "say": "",
+          "show": "菜单栏里,是同一只翅膀"
+        }
+      ]
+    },
+    {
+      "id": "c08",
+      "dur": 2.6,
+      "parts": [
+        {
+          "say": "",
+          "show": "活停了,它也静下来"
+        }
+      ]
+    },
+    {
+      "id": "c09",
+      "dur": 2.4,
+      "parts": [
+        {
+          "say": "",
+          "show": "台式机上:没有电池卡"
+        }
+      ]
+    },
+    {
+      "id": "c10",
+      "dur": 2.4,
+      "parts": [
+        {
+          "say": "",
+          "show": "无风扇的 Mac:没有风扇卡"
+        }
+      ]
+    },
+    {
+      "id": "c11",
+      "dur": 2.0,
+      "parts": [
+        {
+          "say": "",
+          "show": ""
+        }
+      ]
+    }
+  ],
+  "overrides": {
+    "panel-wait": {
+      "in": 12.0,
+      "out": 44.0,
+      "speed": 8
+    },
+    "panel-warm": {
+      "in": 44.0,
+      "out": 49.5
+    },
+    "panel-warm-out": {
+      "in": 49.5,
+      "out": 49.5
+    },
+    "bar-warm": {
+      "in": 50.0,
+      "out": 53.5
+    },
+    "panel-settle": {
+      "in": 61.0,
+      "out": 67.4,
+      "speed": 2
+    }
+  },
+  "overrides_note": "Times that depend on when this take ran warm: tools/warm.py build/raw/p-zh.mov gave calm until 45.90 s, warm to 66.67 s, load off at 60.05 s."
+}

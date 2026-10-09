@@ -1,0 +1,19 @@
+{
+ "comment": "Edit decision list for the film. Times are seconds in the named take; points are that take's own points. p is the panel, m the menu bar icon's rectangle, d and f the panel as a desktop and a fanless Mac lay it out. The names are logical: each script maps them to its language's recordings and overrides the steps whose times depend on when that take ran warm. The long wait under load plays at 'speed': 8; the sample tag says waits are shortened.",
+ "paths": {},
+ "steps": [
+  {"id": "title", "kind": "title", "cues": [["c01", 0.3]], "fit": true, "tail": 0.3},
+  {"id": "bar-idle", "take": "m", "in": 1.0, "out": 4.6, "phone": "in", "cues": [["c02", 0.1]], "fit": true, "tail": 0.2},
+  {"id": "bar-load", "take": "m", "in": 4.6, "out": 8.6, "cues": [["c03", 0.2]], "fit": true, "tail": 0.2},
+  {"id": "panel-load", "take": "p", "in": 5.6, "out": 7.6, "cues": [["c04", 0.2]]},
+  {"id": "panel-cores", "take": "p", "in": 7.6, "out": 10.6, "cam": [188, 290, 1.24], "fit": true, "tail": 0.2},
+  {"id": "panel-wait", "take": "p", "in": 12.0, "out": 44.0, "speed": 8, "cues": [["c05", 0.2]], "fit": true, "tail": 0.2},
+  {"id": "panel-warm", "take": "p", "in": 44.0, "out": 49.5, "cam": [188, 120, 1.24], "cues": [["c06", 0.6]], "fit": true, "tail": 0.2},
+  {"id": "panel-warm-out", "take": "p", "in": 49.5, "out": 49.5, "dur": 0.9, "cam": [188, 120, 1.0]},
+  {"id": "bar-warm", "take": "m", "in": 47.0, "out": 50.5, "cues": [["c07", 0.2]], "fit": true, "tail": 0.2},
+  {"id": "panel-settle", "take": "p", "in": 60.0, "out": 66.0, "speed": 2, "cues": [["c08", 0.2]], "fit": true, "tail": 0.2},
+  {"id": "desktop", "take": "d", "in": 1.0, "out": 1.0, "dur": 2.6, "cues": [["c09", 0.1]]},
+  {"id": "fanless", "take": "f", "in": 1.0, "out": 1.0, "dur": 2.6, "cues": [["c10", 0.1]]},
+  {"id": "end", "kind": "end", "cues": [["c11", 0.5]], "fit": true, "tail": 2.6}
+ ]
+}

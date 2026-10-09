@@ -1,0 +1,11 @@
+{
+ "comment": "The silent page loop: the cores are flat out and the wing is calm; the CPU runs warm and colour runs out along its feather; the load stops and it settles. It ends on the frame it starts on. 'top' is the top 736 pixels of the panel take. Each language's script maps it to its own recording and overrides the times. Render with: python3 tools/build.py script.loop.en.json --edit loop.json --layout loop --silent",
+ "paths": {},
+ "steps": [
+  {"id": "l-busy", "take": "top", "in": 43.3, "out": 45.3},
+  {"id": "l-warm", "take": "top", "in": 45.3, "out": 50.3},
+  {"id": "l-off", "take": "top", "in": 59.5, "out": 63.5, "speed": 1.6},
+  {"id": "l-rest", "take": "top", "in": 63.5, "out": 63.5, "dur": 1.0},
+  {"id": "l-back", "take": "top", "in": 43.3, "out": 43.3, "dur": 0.5, "dissolve": 0.4}
+ ]
+}

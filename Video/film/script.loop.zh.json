@@ -1,0 +1,32 @@
+{
+  "lang": "zh",
+  "main": "top-zh",
+  "takes": {
+    "top": "top-zh"
+  },
+  "sample_tag": "M4 Max 满载下的真实读数",
+  "cues": [],
+  "overrides": {
+    "l-busy": {
+      "in": 43.0,
+      "out": 45.0
+    },
+    "l-warm": {
+      "in": 45.0,
+      "out": 50.0
+    },
+    "l-off": {
+      "in": 64.5,
+      "out": 67.4,
+      "speed": 1.2
+    },
+    "l-rest": {
+      "in": 67.4,
+      "out": 67.4
+    },
+    "l-back": {
+      "in": 43.0,
+      "out": 43.0
+    }
+  }
+}

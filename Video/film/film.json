@@ -1,0 +1,96 @@
+{
+  "label": "PWE MONITOR",
+  "icon": "build/PWE Monitor.app/Contents/Resources/AppIcon.icns",
+  "icon_round": false,
+  "main": "p-en",
+  "takes": {
+    "p-en": {
+      "size": [
+        754,
+        1734
+      ],
+      "points": 377,
+      "radius": 26
+    },
+    "d-en": {
+      "size": [
+        754,
+        1480
+      ],
+      "points": 377,
+      "radius": 26
+    },
+    "f-en": {
+      "size": [
+        754,
+        1500
+      ],
+      "points": 377,
+      "radius": 26
+    },
+    "m-en": {
+      "size": [
+        306,
+        48
+      ],
+      "points": 153,
+      "radius": 12,
+      "max_scale": 3.2,
+      "align": "middle",
+      "widths": "build/raw/m-en.widths.json"
+    },
+    "p-zh": {
+      "size": [
+        754,
+        1758
+      ],
+      "points": 377,
+      "radius": 26
+    },
+    "d-zh": {
+      "size": [
+        754,
+        1500
+      ],
+      "points": 377,
+      "radius": 26
+    },
+    "f-zh": {
+      "size": [
+        754,
+        1520
+      ],
+      "points": 377,
+      "radius": 26
+    },
+    "m-zh": {
+      "size": [
+        306,
+        48
+      ],
+      "points": 153,
+      "radius": 12,
+      "max_scale": 3.2,
+      "align": "middle",
+      "widths": "build/raw/m-zh.widths.json"
+    },
+    "top-en": {
+      "size": [
+        754,
+        736
+      ],
+      "points": 377,
+      "radius": 26,
+      "note": "The top of the panel take, cut out with ffmpeg for the page loop: the wing, the verdict, the three figures and the cores."
+    },
+    "top-zh": {
+      "size": [
+        754,
+        736
+      ],
+      "points": 377,
+      "radius": 26,
+      "note": "The top of the panel take, cut out with ffmpeg for the page loop: the wing, the verdict, the three figures and the cores."
+    }
+  }
+}

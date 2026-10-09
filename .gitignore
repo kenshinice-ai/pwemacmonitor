@@ -17,3 +17,6 @@ xcuserdata/
 
 # Claude Code per-machine settings (auto-memory group wiring)
 **/.claude/settings.local.json
+
+# Film: takes and renders live outside the repo (a link to ~/Movies/PWE Films).
+Video/film/build

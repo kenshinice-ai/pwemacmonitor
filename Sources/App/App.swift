@@ -67,6 +67,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             }
         }
         if CommandLine.arguments.contains("--open") { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.openPopover() } }
+        if CommandLine.arguments.contains("--panel-window") { DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self.openPanelWindow() } }
         if CommandLine.arguments.contains("--popover-test") { runPopoverTest() }
         if CommandLine.arguments.contains("--bench-icon") { WingStatesCheck.bench(); NSApp.terminate(nil) }
         if CommandLine.arguments.contains("--updatecheck") { exit(UpdateCheckSelfTest.run()) }
@@ -143,6 +144,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     /// Debug aid: renders the dashboard and the menu-bar glyph to PNG files in both appearances.
+    /// `--panel-window`: the panel in a plain window that stays open, for recording it (Video/film).
+    /// The popover cannot be recorded while the Mac is in use: opening it takes the keyboard, and it
+    /// closes on the first click anywhere else. This window does neither. Nothing in the app opens it.
+    private var panelWindow: NSWindow?
+    private func openPanelWindow() {
+        monitor.isOpen = true
+        let host = NSHostingView(rootView: DashboardView(monitor: monitor))
+        host.frame = NSRect(origin: .zero, size: host.fittingSize)
+        let win = NSWindow(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        win.title = "PWE Monitor panel"
+        win.contentView = host
+        win.isReleasedWhenClosed = false
+        if let screen = NSScreen.screens.last {
+            win.setFrameOrigin(NSPoint(x: screen.visibleFrame.minX + 24, y: screen.visibleFrame.maxY - host.frame.height - 24))
+        }
+        win.orderFrontRegardless()
+        panelWindow = win
+    }
+
     /// Documentation screenshots go into a public repository, so `--demo` substitutes the two
     /// things that would otherwise publish the author's environment: the running process names and
     /// the local IP address. Every other figure is real.
