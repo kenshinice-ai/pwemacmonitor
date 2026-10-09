@@ -7,7 +7,7 @@ recorded in each language, and one edit serves both.
 Everything on screen is recorded from the app on this Mac (an M4 Max) under a real load. The readings
 are real. Nothing is drawn or recoloured afterwards.
 
-Status, 2026-10-09: first cut. Lee has not reviewed it. Not published.
+Status, 2026-10-10: Lee has reviewed the film. The loop is on pwestudio.site/macmonitor. The film itself has not been posted anywhere.
 
 The pipeline is the one in `07 TOOLS/PWE Loan Bar/Video/tutorial` (its README explains the script
 files, the edit list and the recording rig). `tools/build.py` and `tools/winrec.swift` are the same
