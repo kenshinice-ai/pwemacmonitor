@@ -10,7 +10,7 @@
 [![Apple Silicon](https://img.shields.io/badge/Apple%20Silicon-M1–M5-A16207?style=flat-square)](#系统要求)
 [![License](https://img.shields.io/badge/license-MIT-0E1729?style=flat-square)](LICENSE)
 
-*A PARADISE PRODUCTION · 天域文创出品*
+*PWE · 天域出品*
 
 [English](README.md) · **简体中文**
 

@@ -391,7 +391,7 @@ Full notices, including the SIL Open Font License for the bundled typefaces, are
 
 Source code: [MIT](LICENSE).
 
-The Paradise Production wing mark, the PWE and Paradise Production names, and the application icon
+The PWE wing mark, the PWE and Paradise Production names, and the application icon
 are **not** covered by that licence. Fork and redistribute freely — but replace
 `Sources/App/BrandMark.swift` and the app name with your own, so nobody mistakes your build for an
 official one. Details in [LICENSE](LICENSE).

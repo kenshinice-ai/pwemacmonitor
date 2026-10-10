@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 import CoreText
 
-/// Paradise Production brand tokens (identity standard v1.0, section 5–6) plus the golden-ratio
+/// PWE brand tokens (identity standard, §5–6 as first written in v1.0) plus the golden-ratio
 /// spacing scale the whole interface is laid out on.
 enum Theme {
 

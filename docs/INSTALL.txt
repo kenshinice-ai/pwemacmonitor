@@ -1,5 +1,5 @@
 PWE Monitor
-A PARADISE PRODUCTION · 天域文创出品
+PWE · 天域出品
 
 The app is in English and 简体中文. It follows your Mac; Language in the settings menu
 overrides that.
