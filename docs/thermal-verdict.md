@@ -109,6 +109,66 @@ thermal state itself — is somebody else's line, and is reported exactly where 
 `Tools/thresholds` replays a reading hovering between 90 and 96 °C: ten band changes without the
 hold, two with it.
 
+## Memory was a magnitude dressed as a verdict (1.7.0)
+
+This document has always listed memory pressure among the verdicts. It was not one. Until 1.7.0
+the app took `kern.memorystatus_level` — free memory as a percentage — and graded it against two
+numbers of its own: under 75 was amber, under 45 coral. Over 85 % in use was amber as well.
+
+macOS decides memory pressure differently, and publishes the answer. The kernel compares the
+*uncompressed* memory still available with the compressor's thresholds, and checks whether the
+compressor itself has room; how much memory is in use does not enter into it
+(xnu `osfmk/vm/vm_pageout.c`, `VM_PRESSURE_NORMAL_TO_WARNING` and its three siblings). The result is
+`kern.memorystatus_vm_pressure_level`: 1 normal, 2 warning, 4 critical — the green, yellow and red
+of Activity Monitor's graph. On macOS it needs no privilege to read.
+
+| Going | Line, as a share of available memory (Mac with more than 3 GB) |
+|---|---|
+| normal → warning | below 50 % |
+| warning → critical | below 34 %, or the compressor is nearly full |
+| critical → warning | above 40 % |
+| warning → normal | above 60 % |
+
+The up and down lines differ, so the level does not flap, and the app adds no hold of its own.
+The divisors behind those percentages depend on the Mac's memory size (`vm_compressor.c`), which is
+one more reason not to copy them: the app reads the level and recomputes nothing.
+
+**Measured, 2026-10-12, M4 Max, macOS 27.0.1** (`Tools/compare-rails.sh`, which sets the level by
+hand with `memory_pressure -S`):
+
+- Level set to warning for 12 s, then critical for 8 s: the sysctl read 2, then 4, and was back at
+  1 within a second of the reset. Free memory stayed at 81–82 % throughout. **The old rule called
+  all twenty seconds calm.**
+- The other way round: memory in use rose from 61 % to 77 % in twenty seconds (the probe was
+  leaking) and the level never left normal.
+
+So the rule is now the system's, whole:
+
+| macOS says | Shown | Colour | MEM feather |
+|---|---|---|---|
+| normal | Normal · 正常 | none | solid; how full memory is only sets the length of the legend bar |
+| warning | Warning · 警告 | amber | on the warm mark |
+| critical | Critical · 严重 | coral | full |
+| nothing readable | — | none | calm |
+
+Unlike a die temperature, memory gets no amber of our own. A temperature may reach amber on a
+threshold we chose because macOS offers nothing between "nominal" and "performance reduced".
+For memory it offers all three states, so there is nothing left for a guess to add.
+
+Beside the word is **how long** — "Warning · 12m" — counted from the moment the level left normal
+and not restarted when warning becomes critical. A spell already under way when the app starts is
+printed as a floor: "12m+". The verdict line says the same thing in place of a percentage:
+*Memory pressure warning · 12m*. And while the pressure lasts, the process list is ordered by
+memory instead of CPU, because the question has changed from who is busy to who is holding it.
+
+`Tools/thresholds` sweeps every combination of memory in use, free percentage and level —
+12,663 of them — and fails if anything but the level moves the band.
+
+<img src="dashboard-pressure-dark.png" alt="The panel with macOS reporting memory pressure: the verdict line, the MEM feather, the memory figure and the Pressure row in amber, and the process list ordered by memory." width="330">
+
+Rendered with `PWEMON_PRESSURE=warning`, which sets the level for one process without touching the
+system's. The "+" is that switch showing: the pressure was on before the app started looking.
+
 ## Still guesses, and that is now safe
 
 `tempWarm` / `tempFill` and the power envelope table are calibrated on **one machine**. Max is the
@@ -117,7 +177,7 @@ On a chip that never reaches 95 °C the die channels simply stay calm, which is 
 
 `Tools/thresholds` holds the line that makes this acceptable: it sweeps 0–200 °C and 0–400 W with
 macOS reporting nominal and **fails the build if any magnitude reaches hot**, then checks that all
-seven verdicts still do. 80,295 assertions.
+eight verdicts still do. 114,105 assertions.
 
 ## Re-measuring on another chip
 

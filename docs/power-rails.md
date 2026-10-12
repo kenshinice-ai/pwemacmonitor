@@ -106,3 +106,73 @@ catch — fixed in 1.5.2: `Sampler.cpuPower` sets the counter aside for any samp
 more than 1.4 × the histogram plus 2 W, and ANE and DRAM hold their last good figures for that
 sample. `Tools/thresholds` pins the 21.69-against-12.07 case and the honest cases around it. Two histogram samples is too few to call the histogram's accuracy on the CPU; it wants a
 longer run with the counter kept out of the way.
+
+## Every rail against powermetrics, and the Neural Engine back (1.7.0)
+
+Two things prompted this. macmon 0.9.0 restored its power figures on macOS 27 through the CLPC
+driver's own energy counters, which raised the question of whether this app should do the same.
+And the note just above — two histogram samples is too few — had stood for three weeks.
+
+**The run.** `Tools/compare-rails.sh`, 2026-10-12, M4 Max, macOS 27.0.1 (26A434), twice: 148 and
+107 one-second samples. `powermetrics` runs as root beside `Tools/railprobe`, which does not, through
+quiet, every core busy, the GPU busy, and Vision work for the Neural Engine. Thermal pressure
+stayed nominal throughout.
+
+| Rail | Source | Quiet | Under load | Decision |
+|---|---|---|---|---|
+| CPU | Cluster histograms — what the app uses | 0.56–0.87 W high | 22.72 W against 21.84 W: **+4.0 %** | **kept** |
+| CPU | CLPC counter | 0.49–0.82 W high | 23.08 W: +5.7 %; +22 % on one 6.8 W load | not used for display |
+| CPU | Energy Model counter | — | within 0.1 % | per-second only while `powermetrics` runs |
+| GPU | Energy Model counter — what the app uses | matches | 41.47 W against 41.51 W: −0.1 % | **kept** |
+| GPU | CLPC counter | often 0.5 W high | −0.1 % | not used |
+| ANE | CLPC counter | 0 against 0 | 3.581 W against 3.579 W: **+0.1 %**, both runs | **adopted** |
+| DRAM | Energy Model counter | 0.4–2.0 W | — | still batched without root; still left out |
+
+What that settled:
+
+- **The histogram is the best CPU figure an unprivileged process can have.** It is 4 % high with
+  every core busy. The counter that looked like an upgrade is further off.
+- **Its idle offset may not be an error.** This document has explained the histogram's extra
+  0.7 W at idle as the midpoint of the lowest band. But CLPC's counter — an energy counter, with no
+  bands — reads the same 0.7 W above `powermetrics`, and the two agree with each other: 1.62 W and
+  1.62 W. Two independent routes to one number suggest `powermetrics`' "CPU Power" leaves something
+  out that both of them include. **Not established**, and nothing is changed on the strength of it.
+- **CLPC's GPU counter is not the Energy Model's.** In the second run it sat about half a watt
+  higher in every phase but the GPU's own. Unexplained; the Energy Model matches `powermetrics`.
+- **The Neural Engine's rail is back on macOS 27**, from the one CLPC counter that checked out.
+
+**How ANE is read, and why it is not simply trusted.** `Sources/Core/CLPC.swift` holds macmon's
+table: seventeen CLPC drivers, each with a key per counter, and the table indices for macOS 27. An
+IOReport ID is `(index << 32) | key`, and the index belongs to the OS release — the ANE's moved
+from 23 to 24 between macOS 26 and 27. The table was extracted from Apple's kernelcaches for 27.0
+and 27.0.1; nothing in it says when it stops being right, and a wrong ID reads some other counter
+without complaint.
+
+So the app subscribes to two CLPC counters, not one. The CPU counter is the **witness**: it and the
+histograms measure the same clusters by different routes, and in both runs their 30-second means
+were within 0.4 W of each other. Every 30 seconds `Sampler.clpcAgrees` compares them. While they
+agree to within 1.5 W or a quarter of the reading, the ANE figure is shown. The first time they do
+not, CLPC is set aside for the rest of the run and the ANE rail disappears — which is what 1.6.0
+showed. `--probe` prints the source beside each figure.
+
+On macOS 26 and earlier none of this runs: the Energy Model is live and supplies ANE and DRAM as
+it always did.
+
+**After a macOS update.**
+
+1. Run `"build/PWE Monitor.app/Contents/MacOS/pwemon" --json --samples 40 --interval 1`.
+   Expected: `power.ane_source` is `clpc` from about the thirtieth line on. If it stays `none`, the
+   witness has refused the table or the driver is not in it; the app is already showing the 1.6.0
+   rails and nothing is wrong on screen.
+2. If it stays `none`, check whether macmon's `src/clpc.rs` has a table for the new version.
+   Copy the indices and keys into `CLPC.swift`, and extend the `osMajor` test there.
+3. Run `Tools/compare-rails.sh` (it asks for your password; about two and a half minutes).
+   Expected: its report puts CLPC's ANE within a few percent of `powermetrics` in the `ane` phase.
+   Do not ship a new table without this step.
+
+> ⚠️ Do not widen `CLPC.reportIDs` to an OS version the table was not extracted from.
+> The IDs would be accepted and would read whatever counter now sits at those indices.
+> The witness catches a wrong CPU counter; it cannot see a wrong ANE counter beside a right CPU one.
+
+Cost: the two counters add about half a millisecond a sample (9.0 → 9.6 ms for IOReport with all
+three, measured on the app's queue).

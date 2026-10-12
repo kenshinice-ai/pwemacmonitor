@@ -28,6 +28,13 @@ struct SocInfo {
             info.pcpuCores = Int(sysctlValue("hw.physicalcpu", UInt32.self) ?? 0)
         }
         if !info.isLegacyNaming { info.ecpuLabel = "P"; info.pcpuLabel = "S" }
+        // The system names its own levels — "Performance", "Efficiency" — and that outranks a guess
+        // from the chip's marketing name, which is all the line above is. A level it does not name
+        // keeps the guess.
+        if levels >= 2 {
+            if let n = sysctlString("hw.perflevel0.name")?.first, n.isLetter { info.pcpuLabel = String(n).uppercased() }
+            if let n = sysctlString("hw.perflevel\(levels - 1).name")?.first, n.isLetter { info.ecpuLabel = String(n).uppercased() }
+        }
 
         if let gpu = ioFirstProperties("AGXAccelerator"), let n = gpu["gpu-core-count"] as? Int { info.gpuCores = n }
 

@@ -82,6 +82,11 @@ thread. Per sample, panel closed:
 Taken 2026-10-10. The same measurement of 1.5.2 the day before read 19.7 ms with the panel closed.
 Most of the wall clock is waiting on the SMC and costs nothing.
 
+1.7.0, 2026-10-12, same tool: 12.5 ms closed, 16.9 ms open, 18.5 ms with all sensors. The extra
+millisecond is the two CLPC counters (docs/power-rails.md). The readings 1.7.0 added to the memory
+card cost nothing measurable: the swap counters were already in the call that reads memory, and
+the pressure level is one sysctl, 0.99 µs.
+
 The whole app, panel closed, default 2 s interval, full menu-bar text, 60 s of `proc_pid_rusage`:
 
 | Version | Share of a core | Footprint | Mach ports |

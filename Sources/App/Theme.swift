@@ -162,6 +162,18 @@ enum Fmt {
     }
     static func gib(_ b: UInt64) -> String { String(format: "%.1f GB", Double(b) / 1_073_741_824) }
     static func rate(_ bps: Double) -> String { bytes(bps) + "/s" }
+    /// Two rates on one unit — "12.4 · 3.1 MB/s". Each with its own unit ("980 KB/s · 1.2 MB/s")
+    /// does not fit a half-width card, and makes the reader do the conversion to compare them.
+    static func ratePair(_ a: Double, _ b: Double) -> String {
+        let units = ["KB/s", "MB/s", "GB/s"]
+        var scale = 1000.0, i = 0
+        while max(a, b) / scale >= 999.5, i < units.count - 1 { scale *= 1000; i += 1 }      // 999.5 would print as "1000"
+        func one(_ v: Double) -> String {
+            let x = v / scale
+            return x < 0.05 ? "0" : x >= 100 ? String(format: "%.0f", x) : String(format: "%.1f", x)
+        }
+        return "\(one(a)) · \(one(b)) \(units[i])"
+    }
     static func uptime(_ t: TimeInterval) -> String {
         let d = Int(t) / 86400, h = (Int(t) % 86400) / 3600, m = (Int(t) % 3600) / 60
         if d > 0 { return String(format: L("fmt.uptime.dh", "%1$dd %2$dh"), d, h) }

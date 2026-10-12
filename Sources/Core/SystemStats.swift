@@ -2,11 +2,56 @@ import Foundation
 import IOKit
 import IOKit.ps
 
+/// macOS's own verdict on memory, the three levels Activity Monitor's pressure graph is drawn in.
+///
+/// Read from `kern.memorystatus_vm_pressure_level`, which answers 1, 2 or 4. The kernel decides
+/// it from how much uncompressed memory is still available and whether the compressor has room —
+/// **not** from how much is in use — and moves up and down across different lines, so the level
+/// does not flap (xnu `vm_pageout.c`, `VM_PRESSURE_NORMAL_TO_WARNING` and its three siblings; on a
+/// Mac with more than 3 GB the lines are 50 % and 34 % going up, 60 % and 40 % coming down).
+///
+/// Until 1.7.0 this app graded memory itself: "free" below 75 % was amber, below 45 % coral, and
+/// anything over 85 % used was amber. Those were our numbers on quantities the kernel does not
+/// use. Measured 2026-10-12: with the level set to warning and then to critical, free stayed at
+/// 81–82 % and the old rule called all twenty seconds calm; and with used memory climbing from
+/// 61 % to 77 % the level never left normal. See docs/thermal-verdict.md.
+enum MemoryPressure: Int32, CaseIterable {
+    case normal = 1, warning = 2, critical = 4
+
+    var word: String {
+        switch self {
+        case .normal:   return L("pressure.normal", "Normal")
+        case .warning:  return L("pressure.warning", "Warning")
+        case .critical: return L("pressure.critical", "Critical")
+        }
+    }
+    var health: Health {
+        switch self {
+        case .normal: return .calm
+        case .warning: return .warm
+        case .critical: return .hot
+        }
+    }
+    /// For `--json`, which is never translated.
+    var key: String { ["normal", "warning", "critical"][self == .normal ? 0 : self == .warning ? 1 : 2] }
+}
+
 struct MemoryStats {
     var total: UInt64 = 0, used: UInt64 = 0, wired: UInt64 = 0, compressed: UInt64 = 0, cached: UInt64 = 0
     var app: UInt64 = 0
     var swapTotal: UInt64 = 0, swapUsed: UInt64 = 0
-    var pressure: Int = 100   // kern.memorystatus_level: 100 = no pressure
+    /// `kern.memorystatus_level`: available memory as a percentage of all of it. Higher is better.
+    /// Kept for `--json`, where it has always been called `pressure`; nothing is graded on it.
+    var pressure: Int = 100
+    /// Nil when the level could not be read, or read as something other than 1, 2 or 4. That is
+    /// "not known", and is drawn as a dash — never as a guess from the figures above.
+    var level: MemoryPressure? = .normal
+    /// What the sysctl answered, for diagnostics; -1 when it did not answer.
+    var levelRaw: Int32 = 1
+    /// Pages read back from swap and written out to it since boot. Each is counted as the bytes of
+    /// that read or write over the page size (xnu `vm_compressor_backing_store.c`), so a difference
+    /// times the page size is disk I/O.
+    var swapIns: UInt64 = 0, swapOuts: UInt64 = 0
     var usedRatio: Double { zeroDiv(Double(used), Double(total)) }
 
     static func read() -> MemoryStats {
@@ -28,9 +73,12 @@ struct MemoryStats {
             m.compressed = comp * page
             m.cached = ext * page
             m.app = internalPages.subtracting(purg) * page
+            m.swapIns = stats.swapins; m.swapOuts = stats.swapouts
         }
         if let sw = sysctlValue("vm.swapusage", xsw_usage.self) { m.swapTotal = sw.xsu_total; m.swapUsed = sw.xsu_used }
         m.pressure = Int(sysctlValue("kern.memorystatus_level", Int32.self) ?? 100)
+        m.levelRaw = sysctlValue("kern.memorystatus_vm_pressure_level", Int32.self) ?? -1
+        m.level = MemoryPressure(rawValue: m.levelRaw)
         return m
     }
 }
@@ -267,11 +315,14 @@ final class ProcessSampler {
     /// Drop the accumulated CPU-time baseline; the next sample starts a fresh interval.
     func reset() { prevTimes.removeAll(keepingCapacity: true) }
 
-    /// The `limit` busiest processes since the previous call, busiest first.
+    enum Order { case cpu, memory }
+
+    /// The `limit` busiest processes since the previous call — or, by memory, the largest.
     ///
     /// Every process is asked for its CPU time — that is the cost, 3.8 ms for 1,500 of them on an
-    /// efficiency core — but only the ones that make the list are asked for a name.
-    func top(_ limit: Int) -> [ProcessStat] {
+    /// efficiency core — but only the ones that make the list are asked for a name. The whole
+    /// table is ordered before it is cut: the eight largest are not the eight busiest re-sorted.
+    func top(_ limit: Int, by order: Order = .cpu) -> [ProcessStat] {
         let now = ProcessInfo.processInfo.systemUptime
         var n = proc_listpids(UInt32(PROC_ALL_PIDS), 0, nil, 0)
         guard n > 0 else { return [] }
@@ -297,7 +348,11 @@ final class ProcessSampler {
             usage.append((pid, cpu, ru.ri_phys_footprint))
         }
         prevTimes = times
-        usage.sort { $0.cpu > $1.cpu }
+        // The process ID breaks ties, so two idle processes of the same size do not trade rows.
+        switch order {
+        case .cpu:    usage.sort { $0.cpu != $1.cpu ? $0.cpu > $1.cpu : $0.pid < $1.pid }
+        case .memory: usage.sort { $0.memory != $1.memory ? $0.memory > $1.memory : $0.pid < $1.pid }
+        }
         return usage.prefix(limit).map { u in
             var nameBuf = [CChar](repeating: 0, count: 256)
             proc_name(u.pid, &nameBuf, UInt32(nameBuf.count))

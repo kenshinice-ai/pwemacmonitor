@@ -84,7 +84,8 @@ let verdicts: [(String, Health, Health)] = [
     ("macOS thermalState serious", .warm, band({ $0.thermal = .serious }, .cpu)),
     ("macOS thermalState critical", .hot, band({ $0.thermal = .critical }, .cpu)),
     ("macOS thermalState critical (gpu)", .hot, band({ $0.thermal = .critical }, .gpu)),
-    ("memory pressure critical", .hot, band({ $0.memory.pressure = 20; $0.memory.total = 100 }, .memory)),
+    ("macOS memory pressure warning", .warm, band({ $0.memory.level = .warning }, .memory)),
+    ("macOS memory pressure critical", .hot, band({ $0.memory.level = .critical }, .memory)),
     ("SSD past its rated 68 °C", .hot, band({ $0.ssdTemp = 70 }, .ssd)),
     ("battery outside 42 °C", .hot, band({ $0.battery.present = true; $0.battery.temperature = 45 }, .power)),
     ("battery below 10 %, unplugged", .hot, band({ $0.battery.present = true; $0.battery.percent = 5 }, .power)),
@@ -170,6 +171,96 @@ var pw = Snapshot(); pw.sysPower = env * 0.82
 require(pw.holding(after: [.power], chipClass: chip) == [.power], "power at 82 % of the envelope stays held")
 pw.sysPower = env * 0.79
 require(pw.holding(after: [.power], chipClass: chip).isEmpty, "power at 79 % of the envelope lets go")
+
+// ── memory follows macOS's level and nothing else (1.7.0) ──
+// The requirement in one line: with the system at normal, no amount of memory in use and no
+// free-memory percentage may colour the channel. Until 1.7.0 "free below 45 %" was coral and
+// "over 85 % used" was amber, on quantities the kernel does not decide the level from.
+print("── memory: the system's level decides ──")
+var memChecked = 0
+for used in stride(from: 0, through: 1000, by: 5) {
+    for free in stride(from: 0, through: 100, by: 5) {
+        var s = Snapshot(); s.memory.total = 1000; s.memory.used = UInt64(used); s.memory.pressure = free
+        for level in [MemoryPressure.normal, .warning, .critical] {
+            s.memory.level = level
+            let ch = s.channels(chipClass: chip)[Channel.memory.rawValue]
+            require(ch.band == level.health, "memory at \(used / 10) % used, \(free) % free, level \(level.key): band \(ch.band.word)")
+            require(s.memoryHealth == ch.band, "memoryHealth and the channel disagree at level \(level.key)")
+            if level == .normal { require(ch.fill < Health.warmMark, "a normal level reached the warm mark at \(used / 10) % used") }
+            memChecked += 1
+        }
+        s.memory.level = nil
+        require(s.channels(chipClass: chip)[Channel.memory.rawValue].band == .calm, "an unreadable level must be calm, not a guess")
+    }
+}
+var mw = Snapshot(); mw.memory.level = .warning
+var mc = Snapshot(); mc.memory.level = .critical
+require(abs(mw.channels(chipClass: chip)[Channel.memory.rawValue].fill - Health.warmMark) < 1e-9, "warning stands on the warm mark")
+require(abs(mc.channels(chipClass: chip)[Channel.memory.rawValue].fill - 1) < 1e-9, "critical fills the feather")
+require(MemoryPressure(rawValue: 1) == .normal && MemoryPressure(rawValue: 2) == .warning && MemoryPressure(rawValue: 4) == .critical
+        && MemoryPressure(rawValue: 3) == nil && MemoryPressure(rawValue: -1) == nil, "the sysctl answers 1, 2 or 4; anything else is unknown")
+print("  \(memChecked) combinations of used, free and level: the level alone sets the band")
+
+// ── how long the pressure has lasted ──
+var clock = PressureClock()
+clock.update(.normal, now: 100); require(clock.seconds == nil && clock.text == nil, "normal: no spell")
+clock.update(.warning, now: 110); clock.update(.warning, now: 170)
+require(clock.seconds == 60 && clock.startKnown, "a spell that began while we watched is counted from its start")
+clock.update(.critical, now: 400)
+require(clock.seconds == 290, "warning rising to critical does not start the count again")
+clock.update(nil, now: 410)
+require(clock.seconds == 300, "an unreadable level is not the pressure ending")
+clock.update(.normal, now: 500)
+require(clock.seconds == nil && clock.lastSeconds == 390 && clock.lastEnded == 500, "back to normal: the spell is closed and remembered")
+var late = PressureClock()
+late.update(.warning, now: 50); late.update(.warning, now: 770)
+require(!late.startKnown && late.seconds == 720, "pressure already on at launch: the start is not known")
+require(late.text?.hasSuffix("+") == true, "…and the figure is printed as a floor, got \(late.text ?? "nil")")
+late.update(.normal, now: 800); late.update(.warning, now: 900)
+require(late.startKnown, "the next spell is one we saw begin")
+require(PressureClock.format(45) == "45s" && PressureClock.format(725) == "12m" && PressureClock.format(4330) == "1h 12m", "durations: 45s, 12m, 1h 12m")
+print("  spell start, escalation, unreadable level, end, and a start we did not see")
+
+// ── the verdict line ──
+let warnCh = mw.channels(chipClass: chip)
+mw.pressure = clock                                       // normal again: no duration
+require(warnCh.headline(memory: "Memory pressure warning · 12m") == "Memory pressure warning · 12m", "memory's clause is the system's verdict, not a percentage")
+require(!warnCh.headline(memory: "Memory pressure warning · 12m").contains("%"), "no '72 % to its limit' for a level")
+require(Snapshot().channels(chipClass: chip).headline(primed: false) == "Reading…", "nothing is called calm before the first interval is measured")
+require(Snapshot().channels(chipClass: chip).headline() == "All five channels calm", "…and after it, calm is calm")
+var held12 = Snapshot(); held12.memory.level = .warning
+var c12 = PressureClock(); c12.update(.normal, now: 0); c12.update(.warning, now: 10); c12.update(.warning, now: 730); held12.pressure = c12
+require(held12.memoryVerdict == "Memory pressure warning · 12m", "memoryVerdict: got \(held12.memoryVerdict ?? "nil")")
+require(Snapshot().memoryVerdict == nil, "no memory clause while the level is normal")
+// macOS throttling for heat does not explain a shortage of memory: both are said.
+let both = warnCh.headline(thermal: .serious, memory: "Memory pressure warning · 12m")
+require(both.contains("Performance reduced") && both.contains("Memory pressure warning"), "thermal serious must not hide the memory verdict, got: \(both)")
+var hotDie = Snapshot(); hotDie.thermal = .serious
+require(!hotDie.channels(chipClass: chip).headline(thermal: .serious).contains("CPU"), "…but the die channels it lifts are still said once, not twice")
+var unseen = PressureClock(); unseen.update(.warning, now: 5); unseen.update(.normal, now: 65)
+require(unseen.lastSeconds == 60 && !unseen.lastStartKnown, "a spell whose start was not seen is remembered as a floor")
+
+// ── the CLPC witness (1.7.0) ──
+// The pairs measured 2026-10-12, which must agree; and counters that are not the CPU's, which must not.
+print("── CLPC witness ──")
+for (c, h) in [(1.62, 1.62), (23.08, 22.72), (2.51, 2.29), (0.93, 1.06), (8.36, 6.82)] {
+    require(Sampler.clpcAgrees(clpc: c, histogram: h), "measured pair \(c) W / \(h) W must agree")
+}
+require(!Sampler.clpcAgrees(clpc: 41.5, histogram: 1.1), "a GPU's counter read as the CPU's must be refused")
+require(!Sampler.clpcAgrees(clpc: 0.0, histogram: 22.7), "a counter that does not move under load must be refused")
+require(!Sampler.clpcAgrees(clpc: 3.6, histogram: 0.9), "the ANE's counter read as the CPU's must be refused")
+require(!Sampler.clpcAgrees(clpc: -1, histogram: 1), "a negative reading is not a reading")
+for (c, h) in [(0.72, 0.92), (0.84, 1.03), (1.02, 1.16), (1.47, 1.51), (1.09, 1.21)] {
+    require(Sampler.clpcAgrees(clpc: c, histogram: h), "quiet pair \(c) W / \(h) W must agree")
+}
+require(!Sampler.clpcAgrees(clpc: 0, histogram: 1.2), "on an idle Mac a counter reading nothing must still be refused")
+require(!Sampler.clpcAgrees(clpc: 0.14, histogram: 0.92), "…and so must the GPU's counter, idling at a seventh of a watt")
+require(!Sampler.clpcAgrees(clpc: 2.6, histogram: 1.5), "…and one reading a watt too many")
+require(CLPC.reportIDs(bundle: "com.apple.driver.AppleT6041CLPC", osMajor: 27)! == (0x0000_0010_263c_f1f0, 0x0000_0018_7849_fb5c), "M4 Max, macOS 27: the IDs macmon lists")
+require(CLPC.reportIDs(bundle: "com.apple.driver.AppleT6041CLPC", osMajor: 26) == nil && CLPC.reportIDs(bundle: "com.apple.driver.AppleT6041CLPC", osMajor: 28) == nil,
+        "the table is for macOS 27 and says nothing about any other")
+require(CLPC.reportIDs(bundle: "com.apple.driver.AppleUnknownCLPC", osMajor: 27) == nil, "an unknown driver gets no IDs, not a guess")
+print("  five measured pairs agree; a wrong counter, a dead one and another OS are refused")
 
 // ── network: differences of 32-bit counters, and which link is named (1.6.0) ──
 print("── network counters ──")

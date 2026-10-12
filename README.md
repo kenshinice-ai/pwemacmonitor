@@ -33,7 +33,7 @@ Everything on one page, refreshed every 1–5 seconds.
 | **IOReport** | Per-core frequency and usage for both CPU clusters · GPU frequency and usage · CPU / GPU / Neural Engine / DRAM power |
 | **SMC** | CPU and GPU die temperatures · fan RPM and maximum · whole-system power draw |
 | **IOHID** | SSD (NAND) temperature · battery temperature · every PMU die sensor — around 200 in total |
-| **Mach / sysctl / IOKit** | Memory (app, wired, compressed, cached, swap, pressure) · SSD capacity and throughput · network throughput and address · load average · battery percentage, power flow, cycles and health · top processes |
+| **Mach / sysctl / IOKit** | Memory (app, wired, compressed, swap and its read/write rate, macOS's own pressure level and how long it has held) · SSD capacity and throughput · network throughput and address · load average · battery percentage, power flow, cycles and health · top processes |
 
 Two of these are worth calling out, because most menu-bar monitors do not have them:
 
@@ -41,8 +41,9 @@ Two of these are worth calling out, because most menu-bar monitors do not have t
   CPU, GPU, and on macOS 26 and earlier the Neural Engine and DRAM too — read from Apple's own
   counters rather than estimated. macOS 27 updates the CPU, ANE and DRAM energy counters only every
   few minutes; the CPU rail is recovered from the per-cluster power histograms, which still update
-  every second, and ANE and DRAM are left out rather than shown as zero.
-  [How, and how it was checked](docs/power-rails.md).
+  every second, the Neural Engine from the CLPC driver's own counter, and DRAM is left out rather
+  than shown as zero. Each was checked against Apple's `powermetrics`.
+  [How, and what the comparison found](docs/power-rails.md).
 - **Per-core residency.** Each bar is one physical core, frequency-weighted, with the efficiency and
   performance clusters distinguished. Hover a bar for its exact frequency. The load average sits
   under the bars it describes — how many threads are running or waiting for one of those cores.
@@ -122,8 +123,8 @@ When nothing is wrong the mark is drawn solid, exactly as the brand standard dra
 | Colour | State | Triggered by |
 |---|---|---|
 | *none — normal ink* | Calm | everything inside the normal envelope |
-| **Amber** | Warm | macOS reports thermal pressure · memory pressure elevated · SSD ≥ 55 °C · a die or the power rail near its ceiling |
-| **Coral** | Hot | macOS is cooling the machine down · memory critical · SSD past its 68 °C rating · battery outside 38–42 °C or nearly flat |
+| **Amber** | Warm | macOS reports thermal pressure · macOS reports memory pressure *warning* · SSD ≥ 55 °C · a die or the power rail near its ceiling |
+| **Coral** | Hot | macOS is cooling the machine down · macOS reports memory pressure *critical* · SSD past its 68 °C rating · battery outside 38–42 °C or nearly flat |
 
 Coral is reserved for a **verdict** — something macOS or a published limit says is wrong. A
 **magnitude** we grade ourselves, like a die temperature or a wattage, tops out at amber however
@@ -288,14 +289,24 @@ Batt  80% +0.0 W 30.1°C cycles 11
 ```
 
 `--json` emits one object per line, including every sensor, for piping into something else.
-Add `--loop` to keep going.
+Add `--loop` to keep going, or ask for a fixed record:
+
+```bash
+pwemon --json --samples 60 --interval 2     # two minutes of this Mac, one object a line
+```
+
+A rail or a level that was not read is never a number you can mistake for a reading: `--probe`
+prints a dash, and in JSON `power.readable` says which rails were measured and
+`memory.pressure_level` is `null` when macOS did not answer. The older keys are unchanged —
+`memory.pressure` is the free-memory percentage it always was, and nothing is graded on it now.
 
 ## What it costs to run
 
-Measured on an M4 Max under macOS 27.0.1 on 2026-10-10, panel closed, default 2-second refresh,
-full menu-bar text, over 60 s with `proc_pid_rusage`: **1.5–1.8 % of one core**, 18 MB.
+Measured on an M4 Max under macOS 27.0.1, panel closed, default 2-second refresh, full menu-bar
+text, over 60 s with `proc_pid_rusage`: **1.5–1.8 % of one core**, 18 MB (1.6.0 on 2026-10-10;
+1.7.0 read 1.60 % and 1.73 % on 2026-10-12).
 
-About 11 ms of CPU per sample is the sampler (`Tools/bench`, on the app's own queue and spacing);
+About 12 ms of CPU per sample is the sampler (`Tools/bench`, on the app's own queue and spacing);
 about as much again is the menu bar being redrawn with the new figures. A longer interval costs
 proportionally less.
 
@@ -346,6 +357,8 @@ window is 89 samples — the integer approximation of φ that the wing's own arm
 "build/PWE Monitor.app/Contents/MacOS/pwemon" --snapshot docs          # render the UI to PNG
 "build/PWE Monitor.app/Contents/MacOS/pwemon" --popover-test           # popover sizing check
 "build/PWE Monitor.app/Contents/MacOS/pwemon" --portcheck              # 200 samples must not cost a Mach port
+Tools/compare-rails.sh                                                      # every rail against powermetrics (asks for sudo)
+PWEMON_PRESSURE=warning "build/PWE Monitor.app/Contents/MacOS/pwemon" --snapshot /tmp/p   # the panel under memory pressure
 swiftc -O Sources/Core/*.swift Tools/bench/main.swift -o /tmp/b && /tmp/b        # what a sample costs
 swiftc -O Sources/Core/*.swift Tools/thresholds/main.swift -o /tmp/t && /tmp/t   # threshold sweep
 swiftc -O Tools/loccheck/main.swift -o /tmp/l && /tmp/l .                   # string tables
@@ -378,8 +391,9 @@ Two macOS traps are worth repeating, since both produced bugs that looked like s
 **This project stands on [macmon](https://github.com/vladkens/macmon) by
 [vladkens](https://github.com/vladkens).** The Apple Silicon telemetry in `Sources/Core` is a Swift
 port of macmon's Rust implementation — the IOReport channel handling, the SMC key protocol, the
-residency maths and the per-chip quirks were all worked out there first. If you want the same data
-in a terminal, or on Intel, use macmon.
+residency maths and the per-chip quirks were all worked out there first, and the CLPC report IDs
+that bring the Neural Engine's power back on macOS 27 are its table. If you want the same data in a
+terminal, use macmon.
 
 [Stats](https://github.com/exelban/stats) by exelban is the reference every macOS system monitor is
 measured against, and shaped what this one chose to do differently.

@@ -90,13 +90,29 @@ final class IOReport {
             if Self.channelFilter(group: g, subgroup: s, channel: c) { selected.add(item) }
         }
         guard selected.count > 0 else { return nil }
-        let chan = NSMutableDictionary(dictionary: all)
-        chan["IOReportChannels"] = selected
-        channels = chan as CFMutableDictionary
 
-        var subDict: Unmanaged<CFMutableDictionary>?
-        guard let sub = createSub(nil, channels, &subDict, 0, nil) else { return nil }
-        subscription = sub
+        func subscribe(_ list: NSArray) -> (UnsafeRawPointer, CFMutableDictionary)? {
+            let chan = NSMutableDictionary(dictionary: all)
+            chan["IOReportChannels"] = list
+            var subDict: Unmanaged<CFMutableDictionary>?
+            guard let sub = createSub(nil, chan as CFMutableDictionary, &subDict, 0, nil) else { return nil }
+            return (sub, chan as CFMutableDictionary)
+        }
+        // Two counters no channel listing mentions: see `CLPC`. None on macOS 26 and earlier, and
+        // none for a driver the table does not know. They are descriptors written by hand, so
+        // they are tried, not assumed: if the subscription is refused with them, or will not
+        // sample, the app goes on exactly as 1.6.0 did — every other reading depends on this object.
+        let extra = CLPC.channels()
+        if !extra.isEmpty {
+            let withCLPC = NSMutableArray(array: selected)
+            for channel in extra { withCLPC.add(channel) }
+            if let (sub, chan) = subscribe(withCLPC), createSamples(sub, chan, nil)?.takeRetainedValue() != nil {
+                subscription = sub; channels = chan
+                return
+            }
+        }
+        guard let (sub, chan) = subscribe(selected) else { return nil }
+        subscription = sub; channels = chan
     }
 
     private static func str(_ u: Unmanaged<CFString>?) -> String {

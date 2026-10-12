@@ -6,7 +6,12 @@ enum PWEMacMonitorMain {
     static func main() {
         let args = CommandLine.arguments
         if args.contains("--portcheck") { exit(CLI.portCheck()) }
-        if args.contains("--probe") || args.contains("--json") { CLI.run(json: args.contains("--json"), loop: args.contains("--loop")); return }
+        if args.contains("--probe") || args.contains("--json") {
+            CLI.run(json: args.contains("--json"), loop: args.contains("--loop"),
+                    samples: CLI.number(after: "--samples", in: args).map { Int(max(1, min($0, 1e9))) },
+                    interval: CLI.number(after: "--interval", in: args) ?? 1)
+            return
+        }
         let app = NSApplication.shared
         let delegate = AppDelegate()
         app.delegate = delegate
@@ -433,16 +438,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
 /// `pwemon --probe` prints a human summary; `--json [--loop]` streams JSON (one object per line) for scripts.
 enum CLI {
-    static func run(json: Bool, loop: Bool) {
+    /// The number after a flag — `--samples 60`, `--interval 2` — or nil when it is absent or not one.
+    static func number(after flag: String, in args: [String]) -> Double? {
+        guard let i = args.firstIndex(of: flag), i + 1 < args.count, let v = Double(args[i + 1]), v > 0 else { return nil }
+        return v
+    }
+
+    /// `--samples N` prints exactly N readings and stops; `--interval S` spaces them S seconds
+    /// apart (default 1). Together they are a record someone can send: `--json --samples 60
+    /// --interval 2` is two minutes of this Mac, one object a line. `--loop` still runs for ever.
+    static func run(json: Bool, loop: Bool, samples: Int? = nil, interval: Double = 1) {
         setvbuf(stdout, nil, _IOLBF, 0)
         guard let sampler = Sampler() else { FileHandle.standardError.write("Hardware sources unavailable (Apple Silicon required)\n".data(using: .utf8)!); exit(1) }
         // The CLI is the machine-readable surface: always emit the complete sensor list.
-        _ = sampler.sample(interval: 1, allSensors: true)
-        repeat {
-            Thread.sleep(forTimeInterval: 1)
-            let s = sampler.sample(interval: 1, allSensors: true)
+        // The first reading only starts the counters; it is never printed.
+        _ = sampler.sample(interval: interval, allSensors: true)
+        var left = samples ?? (loop ? Int.max : 1)
+        while left > 0 {
+            Thread.sleep(forTimeInterval: interval)
+            let s = sampler.sample(interval: interval, allSensors: true)
             if json { print(encode(s, soc: sampler.soc)) } else { print(summary(s, soc: sampler.soc)) }
-        } while loop
+            left -= 1
+        }
     }
 
     /// `pwemon --portcheck`: take two hundred samples and count this process's Mach ports before
@@ -473,12 +490,12 @@ enum CLI {
     static func summary(_ s: Snapshot, soc: SocInfo) -> String {
         """
         \(soc.chipName) · \(soc.memoryGB) GB · \(soc.ecpuLabel)\(soc.ecpuCores)+\(soc.pcpuLabel)\(soc.pcpuCores) · GPU \(soc.gpuCores)
-        CPU   \(Fmt.pct(s.cpuUsage))  E \(s.ecpuFreq) MHz  P \(s.pcpuFreq) MHz  temp avg \(Fmt.temp1(s.cpuTemp)) max \(Fmt.temp1(s.cpuTempMax))
+        CPU   \(Fmt.pct(s.cpuUsage))  \(soc.ecpuLabel) \(s.ecpuFreq) MHz  \(soc.pcpuLabel) \(s.pcpuFreq) MHz  temp avg \(Fmt.temp1(s.cpuTemp)) max \(Fmt.temp1(s.cpuTempMax))
         GPU   \(Fmt.pct(s.gpuUsage))  \(s.gpuFreq) MHz  temp \(Fmt.temp1(s.gpuTemp))
-        Power sys \(Fmt.watts(s.sysPower))  cpu \(Fmt.watts(s.cpuPower))  gpu \(Fmt.watts(s.gpuPower))  ane \(Fmt.watts(s.anePower))  ram \(Fmt.watts(s.ramPower))
+        Power sys \(Fmt.watts(s.sysPower))\(s.sysPowerMeasured ? "" : " (rails only)")  cpu \(s.cpuPowerReadable ? Fmt.watts(s.cpuPower) : "—") [\(s.cpuPowerSource.rawValue)]  gpu \(Fmt.watts(s.gpuPower))  ane \(s.aneReadable ? Fmt.watts(s.anePower) : "—") [\(s.aneSource)]  ram \(s.ramReadable ? Fmt.watts(s.ramPower) : "—")
         SSD   \(Fmt.temp1(s.ssdTemp))  r \(Fmt.rate(s.diskReadPerSec))  w \(Fmt.rate(s.diskWritePerSec))  used \(Fmt.bytes(Double(s.disk.total - s.disk.free))) / \(Fmt.bytes(Double(s.disk.total)))
         Fans  \(s.fans.map { "\($0.id) \($0.rpm) rpm" }.joined(separator: ", "))
-        Mem   \(Fmt.gib(s.memory.used)) / \(Fmt.gib(s.memory.total))  swap \(Fmt.gib(s.memory.swapUsed))  pressure \(s.memory.pressure)
+        Mem   \(Fmt.gib(s.memory.used)) / \(Fmt.gib(s.memory.total))  swap \(Fmt.gib(s.memory.swapUsed)) (in \(Fmt.rate(s.swapInPerSec)), out \(Fmt.rate(s.swapOutPerSec)))  free \(s.memory.pressure)%  pressure \(s.memory.level?.key ?? "unknown(\(s.memory.levelRaw))")\(s.pressure.text.map { " for " + $0 } ?? "")
         Net   ↓ \(Fmt.rate(s.netInPerSec))  ↑ \(Fmt.rate(s.netOutPerSec))\(s.network.primaryInterface.isEmpty ? "" : "  \(s.network.primaryInterface)")
         Load  \(String(format: "%.2f  %.2f  %.2f", s.loadAvg.0, s.loadAvg.1, s.loadAvg.2))
         Batt  \(s.battery.present ? "\(s.battery.percent)% \(String(format: "%+.1f", s.battery.watts)) W \(Fmt.temp1(s.battery.temperature)) cycles \(s.battery.cycles)" : "none")
@@ -494,15 +511,35 @@ enum CLI {
             // `rails_readable`: all four rails are measured this sample. `cpu_source` says where
             // cpu.power_w came from — the Energy Model counter, the PMP cluster histograms that
             // macOS 27 still updates every second, or nowhere. Both additive.
+            //
+            // 1.7.0, all additive. `readable` says which rails were measured this sample: a rail
+            // that was not still prints 0 in `ane_w` / `ram_w` for the sake of what already reads
+            // them, so ask `readable` before believing a zero. `ane_source` is `energy_model`,
+            // `clpc` or `none`. `sys_measured` is false when the SMC gave no system figure and
+            // `sys_w` is only the rails added up.
             "power": ["sys_w": s.sysPower, "ane_w": s.anePower, "ram_w": s.ramPower, "all_w": s.allPower,
-                      "rails_readable": s.cpuPowerReadable && s.aneDramReadable,
-                      "cpu_source": s.cpuPowerSource.rawValue],
+                      "rails_readable": s.cpuPowerReadable && s.aneReadable && s.ramReadable,
+                      "cpu_source": s.cpuPowerSource.rawValue, "ane_source": s.aneSource, "sys_measured": s.sysPowerMeasured,
+                      "readable": ["cpu": s.cpuPowerReadable, "gpu": true, "ane": s.aneReadable, "ram": s.ramReadable]],
             "ssd": ["temp": s.ssdTemp, "read_bps": s.diskReadPerSec, "write_bps": s.diskWritePerSec, "total": s.disk.total, "free": s.disk.free],
             "fans": s.fans.map { ["name": $0.id, "rpm": $0.rpm, "max_rpm": $0.maxRPM ?? 0] },
-            "memory": ["total": s.memory.total, "used": s.memory.used, "wired": s.memory.wired, "compressed": s.memory.compressed, "swap_used": s.memory.swapUsed, "pressure": s.memory.pressure],
+            // `pressure` is the free-memory percentage and always was — higher is better — and
+            // nothing is graded on it any more. `pressure_level` is macOS's verdict: normal,
+            // warning, critical, or null when it could not be read. `pressure_seconds` is how long
+            // it has been away from normal (null while normal); `pressure_start_known` is false
+            // when the spell began before this process was looking.
+            "memory": ["total": s.memory.total, "used": s.memory.used, "wired": s.memory.wired, "compressed": s.memory.compressed,
+                       "cached": s.memory.cached, "swap_used": s.memory.swapUsed, "pressure": s.memory.pressure,
+                       "pressure_level": s.memory.level.map { $0.key as Any } ?? NSNull(),
+                       "pressure_seconds": s.pressure.seconds.map { $0 as Any } ?? NSNull(),
+                       "pressure_start_known": s.pressure.startKnown,
+                       "swap_in_bps": s.swapInPerSec, "swap_out_bps": s.swapOutPerSec],
             "network": ["in_bps": s.netInPerSec, "out_bps": s.netOutPerSec],
             "battery": ["present": s.battery.present, "percent": s.battery.percent, "watts": s.battery.watts, "temp": s.battery.temperature, "cycles": s.battery.cycles, "health": s.battery.health],
+            // `sensors` keeps one reading per name, and several services share a name (six
+            // "gas gauge battery" on a MacBook Pro). `sensor_list` has every one of them.
             "sensors": Dictionary(s.sensors.map { ($0.name, $0.value) }, uniquingKeysWith: { a, _ in a }),
+            "sensor_list": s.sensors.map { ["id": $0.id, "name": $0.name, "source": $0.source, "value": $0.value] },
         ]
         let data = (try? JSONSerialization.data(withJSONObject: obj, options: [.sortedKeys])) ?? Data()
         return String(decoding: data, as: UTF8.self)

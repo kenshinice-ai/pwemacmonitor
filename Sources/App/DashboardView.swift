@@ -123,11 +123,15 @@ struct DashboardView: View {
         Card(dark: dark) {
             HStack(alignment: .top, spacing: 0) {
             heroStat("CPU", Fmt.pct(s.cpuUsage), Fmt.ghz(s.pcpuFreq), Fmt.temp(s.cpuTempMax), s.cpuTempMaxHealth,
-                         busy(s.cpuLoadHealth), monitor.history["cpu"] ?? [], ceiling: 1)
+                         busy(s.cpuLoadHealth), monitor.history["cpu"] ?? [], ceiling: 1,
+                         help: L("help.scaled", "The share of the chip's capacity in use, weighted by clock speed: a core running at half its top speed counts for half."),
+                         window: Fmt.pct)
                 rule
                 heroStat("GPU", Fmt.pct(s.gpuUsage), s.gpuFreq > 0 ? "\(s.gpuFreq) MHz" : L("value.idle", "idle"),
                          s.gpuTemp > 0 ? Fmt.temp(s.gpuTemp) : nil, s.gpuTempHealth,
-                         busy(s.gpuLoadHealth), monitor.history["gpu"] ?? [], ceiling: 1)
+                         busy(s.gpuLoadHealth), monitor.history["gpu"] ?? [], ceiling: 1,
+                         help: L("help.scaled", "The share of the chip's capacity in use, weighted by clock speed: a core running at half its top speed counts for half."),
+                         window: Fmt.pct)
                 rule
                 // The second figure is `railPower`, not `allPower`: the four bars in the card
                 // directly below add up to exactly this number, and a reader who checks is
@@ -136,7 +140,8 @@ struct DashboardView: View {
                          s.cpuPowerReadable ? String(format: L("hero.rails", "rails %@"), Fmt.watts(s.railPower))
                                             : String(format: L("hero.gpuOnly", "GPU %@"), Fmt.watts(s.gpuPower)), nil, .calm,
                          monitor.powerHealth, monitor.history["power"] ?? [], ceiling: nil,
-                         help: L("hero.powerHelp", "The system rail. 'rails' is the sum of the compute rails drawn below it — the rest is display, ports and everything else in the machine."))
+                         help: L("hero.powerHelp", "The system rail. 'rails' is the sum of the compute rails drawn below it — the rest is display, ports and everything else in the machine."),
+                         window: Fmt.watts)
             }
         }
     }
@@ -149,8 +154,21 @@ struct DashboardView: View {
 
     private var rule: some View { Rectangle().fill(Theme.stroke(dark)).frame(width: 1, height: 66).padding(.horizontal, Theme.s3) }
 
+    /// `window` formats the curve's own mean and peak for the hover: the figure on the card is
+    /// this instant, and the question a curve raises is what it has been.
     private func heroStat(_ title: String, _ value: String, _ sub: String, _ temp: String?, _ tempHealth: Health,
-                          _ h: Health, _ series: [Double], ceiling: Double?, help: String? = nil) -> some View {
+                          _ h: Health, _ series: [Double], ceiling: Double?, help: String? = nil,
+                          window: ((Double) -> String)? = nil) -> some View {
+        var hover = help ?? ""
+        if let window, series.count >= Sparkline.minimumSamples, let peak = series.max() {
+            let mean = series.reduce(0, +) / Double(series.count)
+            hover += (hover.isEmpty ? "" : " ") + String(format: L("help.window", "Across the curve: mean %1$@, peak %2$@."), window(mean), window(peak))
+        }
+        return heroStatBody(title, value, sub, temp, tempHealth, h, series, ceiling: ceiling).help(hover)
+    }
+
+    private func heroStatBody(_ title: String, _ value: String, _ sub: String, _ temp: String?, _ tempHealth: Health,
+                              _ h: Health, _ series: [Double], ceiling: Double?) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             SectionLabel(title, dark: dark, ruled: false)
             Text(value).font(Theme.number(21, 600)).foregroundStyle(Theme.health(h, dark: dark))
@@ -166,7 +184,6 @@ struct DashboardView: View {
             Sparkline(values: series, ceiling: ceiling, color: Theme.healthFill(h, dark: dark)).frame(height: 21).padding(.top, 2)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .help(help ?? "")
     }
 
     // MARK: Thermals
@@ -287,6 +304,7 @@ struct DashboardView: View {
             VStack(spacing: 5) {
                 Headline(Fmt.gib(m.used), note: String(format: L("value.of", "of %@"), Fmt.gib(m.total)),
                          color: Theme.health(s.memoryHealth, dark: dark), dark: dark)
+                    .help(String(format: L("help.cached", "Used does not count %@ of cached files, which macOS hands back the moment something needs the space."), Fmt.gib(m.cached)))
                 // Ink only. The headline already carries the pressure colour; a permanently amber
                 // App segment said "look here" about memory that was fine.
                 StackedBar(parts: [(Double(m.app), Theme.series(0, dark)),
@@ -296,14 +314,36 @@ struct DashboardView: View {
                 kv(L("row.app", "App"), Fmt.gib(m.app), swatch: Theme.series(0, dark))
                 kv(L("row.wired", "Wired"), Fmt.gib(m.wired), swatch: Theme.series(1, dark))
                 kv(L("row.compressed", "Compressed"), Fmt.gib(m.compressed), swatch: Theme.series(2, dark))
-                kv(L("row.cached", "Cached"), Fmt.gib(m.cached))
+                // "Cached" stood here until 1.7.0. It is memory the system gives back on demand,
+                // so nobody could act on it; it is in the hover on the figure above. Its row went to
+                // the reading that explains a slow Mac — and the card is the height it was.
                 kv(L("row.swap", "Swap"), Fmt.gib(m.swapUsed))
-                kv(L("row.pressure", "Pressure"),
-                   m.pressure >= 75 ? L("value.normal", "Normal")
-                                    : m.pressure >= 45 ? L("value.elevated", "Elevated") : L("value.critical", "Critical"),
-                   color: Theme.health(s.memoryHealth, dark: dark))
+                kv(L("row.swapIO", "Swap I/O"), Fmt.ratePair(s.swapInPerSec, s.swapOutPerSec))
+                    .help(L("help.swapIO", "Read back from swap · written out to swap, each second. Writing is what a Mac short of memory does; reading back is what makes it feel slow."))
+                // macOS's verdict, in its own three words, and how long it has held. Nothing
+                // above this row decides the colour: see `MemoryPressure`.
+                kv(L("row.pressure", "Pressure"), pressureText,
+                   color: m.level == nil ? Theme.muted(dark) : Theme.health(s.memoryHealth, dark: dark))
+                    .help(pressureHelp)
             }
         }
+    }
+
+    private var pressureText: String {
+        guard let level = s.memory.level else { return "—" }
+        guard level != .normal, let held = s.pressure.text else { return level.word }
+        return level.word + " · " + held
+    }
+
+    private var pressureHelp: String {
+        var text = L("help.pressure", "Reported by macOS — the three levels of Activity Monitor's memory pressure graph. It follows how much uncompressed memory is still available, not how much is in use.")
+        if s.memory.level == .normal, let lasted = s.pressure.lastSeconds, let ended = s.pressure.lastEnded {
+            let length = PressureClock.format(lasted)
+            text += " " + String(format: L("help.pressureLast", "The last spell lasted %1$@ and ended %2$@ ago."),
+                                 s.pressure.lastStartKnown ? length : String(format: L("fmt.atLeast", "%@+"), length),
+                                 PressureClock.format(max(0, s.uptime - ended)))
+        }
+        return text
     }
 
     // MARK: Storage
@@ -449,10 +489,8 @@ struct DashboardView: View {
             rails.append(("CPU", s.cpuPower, loadColor(busy(s.cpuLoadHealth), calm: Theme.series(0, dark))))
         }
         rails.append(("GPU", s.gpuPower, loadColor(busy(s.gpuLoadHealth), calm: Theme.series(1, dark))))
-        if s.aneDramReadable {
-            rails.append(("ANE", s.anePower, Theme.series(2, dark)))
-            rails.append(("DRAM", s.ramPower, Theme.series(3, dark)))
-        }
+        if s.aneReadable { rails.append(("ANE", s.anePower, Theme.series(2, dark))) }
+        if s.ramReadable { rails.append(("DRAM", s.ramPower, Theme.series(3, dark))) }
         return rails
     }
 
@@ -481,7 +519,13 @@ struct DashboardView: View {
 
     // MARK: Processes — always six rows so the card height never changes between refreshes.
     private var processes: some View {
-        Card(dark: dark, title: L("card.processes", "TOP PROCESSES · % OF ONE CORE")) {
+        // While macOS reports memory pressure the list is the largest processes, not the
+        // busiest, and the title says so. The same two columns in the same two places: the one the
+        // list is ordered by takes the weight. No switch — the list answers whichever question
+        // the machine is raising.
+        let byMemory = s.processesByMemory
+        return Card(dark: dark, title: byMemory ? L("card.processesMemory", "TOP PROCESSES · BY MEMORY")
+                                                : L("card.processes", "TOP PROCESSES · % OF ONE CORE")) {
             VStack(spacing: 5) {
                 ForEach(0..<6, id: \.self) { i in
                     let p = i < s.processes.count ? s.processes[i] : nil
@@ -489,10 +533,10 @@ struct DashboardView: View {
                         Text(p?.name ?? "—").font(Theme.ui(10)).lineLimit(1).truncationMode(.middle)
                             .foregroundStyle(p == nil ? Theme.muted(dark) : Theme.ink(dark))
                         Spacer(minLength: 0)
-                        Text(p.map { Fmt.bytes(Double($0.memoryBytes)) } ?? "").font(Theme.number(9, 400))
-                            .foregroundStyle(Theme.muted(dark)).frame(width: 52, alignment: .trailing)
-                        Text(p.map { String(format: "%.1f%%", $0.cpuPercent) } ?? "").font(Theme.number(10, 600))
-                            .foregroundStyle(Theme.health(processHealth(p?.cpuPercent ?? 0), dark: dark))
+                        Text(p.map { Fmt.bytes(Double($0.memoryBytes)) } ?? "").font(Theme.number(byMemory ? 10 : 9, byMemory ? 600 : 400))
+                            .foregroundStyle(byMemory ? Theme.ink(dark) : Theme.muted(dark)).frame(width: 52, alignment: .trailing)
+                        Text(p.map { String(format: "%.1f%%", $0.cpuPercent) } ?? "").font(Theme.number(byMemory ? 9 : 10, byMemory ? 400 : 600))
+                            .foregroundStyle(byMemory ? Theme.muted(dark) : Theme.health(processHealth(p?.cpuPercent ?? 0), dark: dark))
                             .frame(width: 46, alignment: .trailing)
                     }
                     .frame(height: 13)
@@ -590,7 +634,8 @@ private struct BrandHeader: View {
                     .frame(width: 55 * BrandMark.aspect, height: 55)   // Fibonacci; below this the innermost feather is too thin to hold a colour
                     .accessibilityElement()
                     .accessibilityLabel(L("a11y.systemState", "System state"))
-                    .accessibilityValue(ch.spoken(thermal: monitor.snap.thermal, lowPower: monitor.snap.lowPowerMode))
+                    .accessibilityValue(ch.spoken(thermal: monitor.snap.thermal, lowPower: monitor.snap.lowPowerMode,
+                                                  memory: monitor.snap.memoryVerdict, primed: monitor.snap.primed))
                 VStack(alignment: .leading, spacing: 2) {
                     // "PWE Monitor", not "PWE MAC MONITOR": the platform is a version, not part
                     // of the name (doc 17 §5.1), and full caps was the only shouting name in the
@@ -609,7 +654,10 @@ private struct BrandHeader: View {
                     // header already occupied: 33 pt for nothing. It also reads better here,
                     // directly under the name, with the hardware — which you read once — below it.
                     // 238 pt to work in at this width; the longest reachable verdict measures 193.
-                    Text(ch.headline(thermal: monitor.snap.thermal, lowPower: monitor.snap.lowPowerMode))
+                    // No sampler at all — the banner below says why — is not "reading": a dash.
+                    Text(monitor.sampler == nil ? "—"
+                         : ch.headline(thermal: monitor.snap.thermal, lowPower: monitor.snap.lowPowerMode,
+                                       memory: monitor.snap.memoryVerdict, primed: monitor.snap.primed))
                         .font(Theme.ui(9.5, 500))
                         .foregroundStyle(worst == .calm ? Theme.muted(dark) : Theme.health(worst, dark: dark))
                         .lineLimit(1).minimumScaleFactor(0.75)

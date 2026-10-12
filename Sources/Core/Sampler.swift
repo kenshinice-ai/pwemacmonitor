@@ -142,6 +142,10 @@ enum Channel: Int, CaseIterable {
     /// Never translated: these five key the five feathers, and `docs/wing-states.md` defines the
     /// channels by these exact strings.
     var label: String { ["MEM", "SSD", "PWR", "GPU", "CPU"][rawValue] }
+    /// The two channels macOS's thermal state lifts by itself. Under "performance reduced" these
+    /// are already explained and are named again only if they are worse; memory, storage and
+    /// power are separate conditions and are always named.
+    var isDie: Bool { self == .cpu || self == .gpu }
     var name: String {
         switch self {
         case .memory: return L("channel.memory", "Memory")
@@ -164,6 +168,55 @@ struct ChannelHealth {
 
 /// The four readings graded against a threshold we chose, each of which can hover on it.
 enum Magnitude: CaseIterable { case cpuTemp, cpuTempMax, gpuTemp, power }
+
+/// How long the system has been short of memory: from the moment its pressure level left normal
+/// to now. One spell, whatever happens inside it — warning rising to critical does not start the
+/// count again, because the question is how long this Mac has been struggling, and the word
+/// beside the figure already says how badly.
+///
+/// The kernel keeps its own time-at-level (xnu `vm_pressure_response`) and does not publish it,
+/// so this is counted here, to the nearest sample.
+struct PressureClock {
+    /// System uptime at which the level left normal; nil while it is normal.
+    private(set) var since: TimeInterval?
+    /// False when the first thing this process saw was pressure already on. The spell began before
+    /// we were looking, so its length is a floor and is printed with a plus.
+    private(set) var startKnown = true
+    /// The spell before this one: how long it lasted, and the uptime at which it ended.
+    private(set) var lastSeconds: TimeInterval?, lastEnded: TimeInterval?
+    /// Whether that spell's start was seen; if not, its length is a floor too.
+    private(set) var lastStartKnown = true
+    private var seenAny = false
+    private(set) var now: TimeInterval = 0
+
+    /// An unreadable level changes nothing: not knowing is not the pressure ending.
+    mutating func update(_ level: MemoryPressure?, now: TimeInterval) {
+        self.now = now
+        guard let level else { return }
+        if level == .normal {
+            if let s = since { lastSeconds = now - s; lastEnded = now; lastStartKnown = startKnown }
+            since = nil; startKnown = true
+        } else if since == nil {
+            since = now; startKnown = seenAny
+        }
+        seenAny = true
+    }
+
+    var seconds: TimeInterval? { since.map { max(0, now - $0) } }
+
+    /// "45s", "12m", "1h 12m" — and "12m+" when the start was not seen.
+    var text: String? {
+        guard let t = seconds else { return nil }
+        let body = PressureClock.format(t)
+        return startKnown ? body : String(format: L("fmt.atLeast", "%@+"), body)
+    }
+    static func format(_ t: TimeInterval) -> String {
+        let s = Int(t)
+        if s < 60 { return String(format: L("fmt.dur.s", "%ds"), s) }
+        if s < 3600 { return String(format: L("fmt.dur.m", "%dm"), s / 60) }
+        return String(format: L("value.hm", "%1$dh %2$dm"), s / 3600, (s % 3600) / 60)
+    }
+}
 
 struct CoreMetric: Identifiable {
     let id: String          // IOReport channel name
@@ -207,22 +260,37 @@ struct Snapshot {
     var railPower: Double { cpuPower + gpuPower + anePower + ramPower }
     /// Where `cpuPower` came from this sample, if anywhere. See `Sampler.energyModelLive`.
     var cpuPowerSource = PowerSource.none
-    /// ANE and DRAM exist only as Energy Model counters. When those are not advancing every
-    /// sample, both read zero and the panel leaves the two rails out rather than print a zero.
-    var aneDramReadable = false
+    /// A rail that is not being measured this sample is left out of the panel and printed as a
+    /// dash, never as a zero. The two are separate since 1.7.0: on macOS 27 the Neural Engine
+    /// comes back through `CLPC` and DRAM does not.
+    var aneReadable = false, ramReadable = false
+    /// Where `anePower` came from: `energy_model`, `clpc`, or `none`.
+    var aneSource = "none"
     var cpuPowerReadable: Bool { cpuPowerSource != .none }
+    /// False when the SMC gave no system figure and `sysPower` is only the rails added up.
+    var sysPowerMeasured = false
+    /// False until one interval of the hardware counters has been measured. Before that every
+    /// figure here is a default, and "all five channels calm" would be a statement about nothing.
+    var primed = false
     // Thermals (°C)
     var cpuTemp = 0.0, cpuTempMax = 0.0, gpuTemp = 0.0, ssdTemp = 0.0, batteryTemp = 0.0
     var sensors: [Sensor] = []
     var fans: [FanMetric] = []
     // Memory / Disk / Net / Battery
     var memory = MemoryStats()
+    /// Bytes a second read back from swap and written out to it.
+    var swapInPerSec = 0.0, swapOutPerSec = 0.0
+    /// How long the system has been short of memory. See `PressureClock`.
+    var pressure = PressureClock()
     var disk = DiskStats()
     var diskReadPerSec = 0.0, diskWritePerSec = 0.0
     var netInPerSec = 0.0, netOutPerSec = 0.0
     var network = NetworkStats()
     var battery = BatteryStats()
     var processes: [ProcessStat] = []
+    /// The list is ordered by memory while the system is short of it: the question has changed
+    /// from "who is busy" to "who is holding it".
+    var processesByMemory = false
     var uptime: TimeInterval = 0
     // What the OS says, as opposed to what we measure
     var thermal = ThermalState.nominal
@@ -291,10 +359,16 @@ struct Snapshot {
     var ssdTempHealth: Health { ssdTemp == 0 ? .calm : Health.grade(ssdTemp, warm: 55, hot: 68) }
     var cpuLoadHealth: Health { Health.grade(cpuUsage, warm: 0.55, hot: 0.85) }
     var gpuLoadHealth: Health { Health.grade(gpuUsage, warm: 0.55, hot: 0.85) }
-    var memoryHealth: Health {
-        if memory.pressure < 45 { return .hot }
-        if memory.pressure < 75 || memory.usedRatio > 0.85 { return .warm }
-        return .calm
+    /// macOS's verdict and nothing else. How full memory is does not colour anything: see
+    /// `MemoryPressure`. An unreadable level is calm — unknown is not a fault.
+    var memoryHealth: Health { memory.level?.health ?? .calm }
+    /// The verdict line's words for memory: the system's level and how long it has held. Nil
+    /// while the level is normal or unknown.
+    var memoryVerdict: String? {
+        guard let level = memory.level, level != .normal else { return nil }
+        let line = level == .critical ? L("verdict.memory.critical", "Memory pressure critical")
+                                      : L("verdict.memory.warning", "Memory pressure warning")
+        return pressure.text.map { line + L("verdict.joiner", " · ") + $0 } ?? line
     }
     var diskHealth: Health { Health.grade(disk.usedRatio, warm: 0.85, hot: 0.95) }
     var fanHealth: Health { fans.map { Health.grade($0.ratio, warm: 0.45, hot: 0.8) }.max() ?? .calm }
@@ -332,16 +406,16 @@ struct Snapshot {
             let v: Double
             switch c {
             case .memory:
-                // Pressure decides hot: on macOS a high used ratio is ordinary — the compressor
-                // and purgeable pages see to that — so usage can raise the channel to warm but
-                // is capped below hot, which is exactly what `memoryHealth` has always done.
-                let byUsage = min(Health.warmMark + 0.14,
-                                  Health.strain(memory.usedRatio, warm: 0.85, hot: 1.0))
-                // 26 and 56, not 25 and 55: `pressure` is an integer and the rule this replaces
-                // was `< 75` / `< 45`, i.e. `<= 74` / `<= 44`. Off by one here shifts the whole
-                // channel a step early, which a sweep across every value catches and nothing else does.
-                let byPressure = Health.strain(100 - Double(memory.pressure), warm: 26, hot: 56)
-                v = max(byUsage, byPressure)
+                // The level places the feather: the warm mark at warning, its tip at critical.
+                // How full memory is only says how long the line is while everything is normal,
+                // and stops short of the warm mark — a Mac at 95 % used with the system content is
+                // a calm Mac, and that is the rule this replaces (`MemoryPressure`).
+                let fullness = min(Health.warmMark - 0.02, Health.warmMark * memory.usedRatio)
+                switch memory.level {
+                case .critical: v = 1
+                case .warning:  v = Health.warmMark
+                default:        v = max(0, fullness)
+                }
             case .ssd:
                 v = ssdTemp == 0 ? 0 : Health.strain(ssdTemp, warm: 55, hot: 68)
             case .power:
@@ -390,7 +464,14 @@ extension Array where Element == ChannelHealth {
     /// `thermal` and `lowPower` are passed in rather than read from a channel because neither is
     /// one: they are conditions on the whole machine, and both answer the question a reader
     /// actually arrives with — why is this slow — which no per-channel number does.
-    func headline(thermal: ThermalState = .nominal, lowPower: Bool = false) -> String {
+    ///
+    /// `memory` replaces the memory channel's clause when macOS reports pressure. That channel has
+    /// no reading of its own to quote: its feather stands on the warm mark because the system said
+    /// "warning", so "72 % to its limit" would be our drawing convention read back as a figure.
+    /// `primed` is false until the first interval has been measured; nothing is claimed before.
+    func headline(thermal: ThermalState = .nominal, lowPower: Bool = false,
+                  memory: String? = nil, primed: Bool = true) -> String {
+        guard primed else { return L("verdict.reading", "Reading…") }
         var parts: [String] = []
         // macOS leads when it has something to say. `serious` is defined as performance already
         // being reduced, which outranks any reading we took ourselves.
@@ -399,10 +480,14 @@ extension Array where Element == ChannelHealth {
         // channels itself, so without this the line reads "Performance reduced · GPU warm · 72% to
         // its limit" — and that 72 % is the state's own contribution, not the GPU's temperature.
         // Saying it twice makes one condition look like two.
-        let listed = thermal >= .serious ? notable.filter { $0.band > thermal.health } : notable
+        let listed = thermal >= .serious ? notable.filter { !$0.channel.isDie || $0.band > thermal.health } : notable
         if let worst = listed.first {
-            parts.append(String(format: L("verdict.one", "%1$@ %2$@ · %3$d%% to its limit"),
-                                worst.channel.name, worst.band.word, Int((worst.fill * 100).rounded())))
+            if worst.channel == .memory, let memory {
+                parts.append(memory)
+            } else {
+                parts.append(String(format: L("verdict.one", "%1$@ %2$@ · %3$d%% to its limit"),
+                                    worst.channel.name, worst.band.word, Int((worst.fill * 100).rounded())))
+            }
             if listed.count > 1 {
                 parts[parts.count - 1] += String(format: L("verdict.more", " · +%d more"), listed.count - 1)
             }
@@ -417,17 +502,20 @@ extension Array where Element == ChannelHealth {
     /// The same reading for VoiceOver, at length. Sentence shape is table data rather than string
     /// interpolation — the joiner and the closing clause are entries of their own — because
     /// English punctuation baked into the concatenation produces Chinese that does not parse.
-    func spoken(thermal: ThermalState = .nominal, lowPower: Bool = false) -> String {
+    func spoken(thermal: ThermalState = .nominal, lowPower: Bool = false,
+                memory: String? = nil, primed: Bool = true) -> String {
+        guard primed else { return L("verdict.reading", "Reading…") }
         // Same two conditions the printed verdict leads with, and for the same reason: a screen
         // reader user asking why the machine is slow needs them before any per-channel figure.
         var lead = ""
         if thermal >= .serious { lead = thermal.word + L("a11y.sentenceEnd", ". ") }
         if lowPower { lead += L("verdict.lowPower", "Low Power Mode") + L("a11y.sentenceEnd", ". ") }
-        let listed = thermal >= .serious ? notable.filter { $0.band > thermal.health } : notable
+        let listed = thermal >= .serious ? notable.filter { !$0.channel.isDie || $0.band > thermal.health } : notable
         guard !listed.isEmpty else { return lead + L("a11y.allCalm", "All five channels calm.") }
-        let list = listed.map {
-            String(format: L("a11y.channel", "%1$@ %2$@, %3$d percent of the way to its limit"),
-                   $0.channel.name, $0.band.word, Int(($0.fill * 100).rounded()))
+        let list = listed.map { c -> String in
+            if c.channel == .memory, let memory { return memory }
+            return String(format: L("a11y.channel", "%1$@ %2$@, %3$d percent of the way to its limit"),
+                          c.channel.name, c.band.word, Int((c.fill * 100).rounded()))
         }
         return lead + list.joined(separator: L("a11y.joiner", ". ")) + L("a11y.restCalm", ". The rest calm.")
     }
@@ -451,6 +539,26 @@ final class Sampler {
     /// the clock every histogram shares, and residency missing from it is time spent at 0 W.
     private var histogramTickRate = 0.0
     private var lastANE = 0.0, lastDRAM = 0.0
+    /// Whether the CLPC table is the right one for this OS: nil until the witness has spoken,
+    /// then true, or false for the rest of the run. See `clpcAgrees`.
+    private var clpcTrusted: Bool?
+    private var witnessCLPC = 0.0, witnessHistogram = 0.0, witnessTime = 0.0
+    private var pressureClock = PressureClock()
+    private var primed = false
+    /// `PWEMON_PRESSURE=warning` or `=critical` puts the memory level there for this process, the
+    /// way `PWEMON_HARDWARE` puts another Mac's layout on this one. The real level needs root to
+    /// move (`memory_pressure -S`); the screenshots and a check of the panel's three states do not.
+    /// Everything downstream — the clock, the verdict, the order of the process list — runs as it
+    /// would for the real thing.
+    private let forcedPressure: MemoryPressure? = {
+        switch ProcessInfo.processInfo.environment["PWEMON_PRESSURE"] {
+        case "warning": return .warning
+        case "critical": return .critical
+        default: return nil
+        }
+    }()
+    private var prevSwap: (ins: UInt64, outs: UInt64, at: TimeInterval)?
+    private var procOrder = ProcessSampler.Order.cpu
     private let ioreport: IOReport?
     private let smc: SMC?
     private let hid: IOHIDSensors?
@@ -578,6 +686,8 @@ final class Sampler {
             var cores: [CoreMetric] = []
             var emCPU = 0.0, emANE = 0.0, emDRAM = 0.0
             var clusterEnergy = 0.0, clusterTicks = 0.0, sawCluster = false
+            var clpcCPU: Double?, clpcANE: Double?
+            primed = true
             for ch in sample.channels {
                 switch (ch.group, ch.subgroup) {
                 case ("CPU Stats", "CPU Core Performance States"):
@@ -595,6 +705,9 @@ final class Sampler {
                     else if ch.name.hasSuffix("CPU Energy") { emCPU += w }
                     else if ch.name.hasPrefix("ANE") { emANE += w }
                     else if ch.name.hasPrefix("DRAM") { emDRAM += w }
+                case (CLPC.group, _):
+                    let w = ioreport.watts(ch, elapsed: sample.elapsed)
+                    if ch.name == CLPC.cpuName { clpcCPU = w } else if ch.name == CLPC.aneName { clpcANE = w }
                 case ("PMP", "Energy") where IOReport.isClusterHistogram(ch.name):
                     let (joulesTicks, ticks) = Self.clusterWatts(ioreport.residencies(ch.item))
                     clusterEnergy += joulesTicks; sawCluster = true
@@ -615,7 +728,34 @@ final class Sampler {
                 // batch on ANE and DRAM; hold the last good figures for that one sample rather than
                 // print the spike, or drop the two rails and have the legend flicker.
                 if source == .energyModel { lastANE = emANE; lastDRAM = emDRAM }
-                s.anePower = lastANE; s.ramPower = lastDRAM; s.aneDramReadable = true
+                s.anePower = lastANE; s.ramPower = lastDRAM
+                s.aneReadable = true; s.ramReadable = true; s.aneSource = "energy_model"
+            }
+            // The witness. CLPC's CPU counter and the histograms measure the same clusters by two
+            // routes, and on a table that fits this OS their 30-second means sit within 0.4 W of
+            // each other. A table that does not fit reads some other counter, and they part. So
+            // the ANE figure — which has no second route to check it against — is shown only while
+            // the CPU pair agrees, and once they have disagreed, not again until the app restarts.
+            // A counter that ran backwards or jumped — a reset on wake — is not a reading. No Mac's
+            // Neural Engine draws fifty watts; neither figure is used outside what is possible.
+            if let c = clpcCPU, !(0...500).contains(c) { clpcCPU = nil }
+            if let a = clpcANE, !(0...50).contains(a) { clpcANE = nil }
+            if let c = clpcCPU, let h = histogram {
+                witnessCLPC += c * sample.elapsed; witnessHistogram += h * sample.elapsed; witnessTime += sample.elapsed
+                if witnessTime >= Self.witnessWindow {
+                    if clpcTrusted != false {
+                        clpcTrusted = Self.clpcAgrees(clpc: witnessCLPC / witnessTime, histogram: witnessHistogram / witnessTime)
+                    }
+                    witnessCLPC = 0; witnessHistogram = 0; witnessTime = 0
+                }
+            }
+            if !live, clpcANE != nil || clpcCPU != nil {
+                if clpcTrusted == true, let a = clpcANE {
+                    s.anePower = a; s.aneReadable = true; s.aneSource = "clpc"
+                } else {
+                    // Said in the diagnostics, so a one-shot `--probe` does not read as "no source".
+                    s.aneSource = clpcTrusted == false ? "clpc_refused" : "clpc_pending"
+                }
             }
             cores.sort { Self.coreSortKey($0.id) < Self.coreSortKey($1.id) }
             s.cores = cores
@@ -628,6 +768,11 @@ final class Sampler {
             s.ecpuFreq = max(Int(zeroDiv(e.reduce(0) { $0 + Double($1.freqMHz) }, Double(e.count))), Int(soc.ecpuFreqs.first ?? 0))
             s.pcpuFreq = max(Int(zeroDiv(p.reduce(0) { $0 + Double($1.freqMHz) }, Double(p.count))), Int(soc.pcpuFreqs.first ?? 0))
         }
+
+        if ioreport == nil { primed = true }        // nothing to wait for: say what the other sources say
+        // Once and for all. A later sample that fails to produce a delta is a missed reading, not
+        // a return to knowing nothing, and must not take a live verdict off the screen.
+        s.primed = primed
 
         // Thermals: SMC (macOS 14+) preferred for CPU/GPU, IOHID for everything incl. NAND/battery.
         // A power-gated GPU or CPU cluster leaves its die sensors reporting near-zero garbage
@@ -654,7 +799,7 @@ final class Sampler {
                 if allSensors { sensors.append(Sensor(id: "smc.\(k)", name: k, value: Double(v), source: "SMC")) }
                 if Double(v) >= dieFloor { gpuT.append(Double(v)) }
             }
-            if let p = smc.readFloat("PSTR"), p > 0 { s.sysPower = Double(p) }
+            if let p = smc.readFloat("PSTR"), p > 0 { s.sysPower = Double(p); s.sysPowerMeasured = true }
             for (i, k) in smcFanKeys.enumerated() {
                 guard let v = smc.read(k), let rpm = SMC.numeric(v), rpm >= 0, rpm < 100_000 else { continue }
                 var mx: Int? = nil
@@ -683,6 +828,9 @@ final class Sampler {
         s.gpuTemp = Self.dieAverage(gpuT)
         s.ssdTemp = ssdT.max() ?? 0
         s.sensors = sensors.sorted { ($0.name, $0.id) < ($1.name, $1.id) }
+        // Never less than the rails it contains: the SMC figure lags a burst by a sample, and a
+        // system total below its own parts reads as a fault. `sysPowerMeasured` says whether the
+        // SMC answered at all — when it did not, this is the rails and nothing more.
         s.sysPower = max(s.sysPower, s.allPower)
 
         s.thermal = ThermalState(ProcessInfo.processInfo.thermalState)
@@ -691,6 +839,18 @@ final class Sampler {
         s.held = held
 
         s.memory = MemoryStats.read()
+        if let forcedPressure { s.memory.level = forcedPressure }
+        if let p = prevSwap, s.uptime > p.at {
+            let page = Double(vm_kernel_page_size), dt = s.uptime - p.at
+            // A counter that went backwards is a counter that was reset; that is not traffic.
+            if s.memory.swapIns >= p.ins { s.swapInPerSec = Double(s.memory.swapIns - p.ins) * page / dt }
+            if s.memory.swapOuts >= p.outs { s.swapOutPerSec = Double(s.memory.swapOuts - p.outs) * page / dt }
+        }
+        // A failed read leaves the counters at zero; kept as a baseline, the next good read would
+        // be differenced against nothing and print gigabytes a second.
+        if s.memory.total > 0, s.memory.used > 0 { prevSwap = (s.memory.swapIns, s.memory.swapOuts, s.uptime) }
+        pressureClock.update(s.memory.level, now: s.uptime)
+        s.pressure = pressureClock
         s.battery = BatteryStats.read()
         if s.batteryTemp == 0 { s.batteryTemp = s.battery.temperature }
         // And the other way. macOS 27 no longer publishes `Temperature` on the gas gauge's
@@ -718,11 +878,17 @@ final class Sampler {
         // an average over at most that long, rather than on six blank rows.
         // Half a second, not one: at the 1 s setting the timer's leeway can bring two ticks a
         // shade under a second apart, and the table would then skip every other one.
-        if s.uptime - lastProcSample >= (detail ? 0.5 : 10) {
-            cachedProcs = procs.top(8)
-            lastProcSample = s.uptime
+        //
+        // The list follows the trouble. While macOS reports memory pressure the question is who
+        // is holding the memory, so the table is ordered by footprint; the moment the order
+        // changes it is read again rather than left showing the other ranking.
+        let order: ProcessSampler.Order = (s.memory.level ?? .normal) == .normal ? .cpu : .memory
+        if order != procOrder || s.uptime - lastProcSample >= (detail ? 0.5 : 10) {
+            cachedProcs = procs.top(8, by: order)
+            lastProcSample = s.uptime; procOrder = order
         }
         s.processes = cachedProcs
+        s.processesByMemory = procOrder == .memory
         return s
     }
 
@@ -771,6 +937,24 @@ final class Sampler {
         }
         if let h = histogram { return (h, .clusterHistogram) }
         return (0, .none)
+    }
+
+    /// Seconds of both readings the witness averages before it speaks.
+    static let witnessWindow = 30.0
+
+    /// Whether CLPC's CPU counter and the cluster histograms tell the same story over a window.
+    ///
+    /// Measured 2026-10-12 against each other and against `powermetrics`: 1.62 W and 1.62 W when
+    /// quiet, 23.08 W and 22.72 W with every core busy, 2.51 W and 2.29 W under Vision work —
+    /// never more than 0.4 W apart on a steady load, and 1.5 W apart (8.36 against 6.82) on one
+    /// odd one. A quarter of the reading covers all of them.
+    ///
+    /// The floor is half a watt, not more, because of the idle Mac: at a watt and a half of CPU a
+    /// wider margin would wave through a counter reading nothing at all. And it must read
+    /// something — a CPU complex that drew under 0.1 W for thirty seconds is a counter that is
+    /// not the CPU's. Quiet pairs measured: 0.72 / 0.92, 0.84 / 1.03, 1.02 / 1.16, 1.47 / 1.51.
+    static func clpcAgrees(clpc: Double, histogram: Double) -> Bool {
+        clpc > 0.1 && abs(clpc - histogram) <= max(0.5, 0.25 * histogram)
     }
 
     /// A PMP cluster histogram, reduced to watt-ticks and ticks. Each state is a power band named

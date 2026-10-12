@@ -58,7 +58,16 @@ final class Monitor: ObservableObject {
     @Published private(set) var revision = 0
     @Published private(set) var error: AppError?
 
-    @Published var interval: Double { didSet { defaults.set(interval, forKey: "interval"); restart() } }
+    /// Changing it starts the curves again. They are drawn as so many samples at this interval,
+    /// so points taken a second apart would otherwise be read as five seconds apart, and the
+    /// "last 3 min" beside the control would be describing a window that was never recorded.
+    @Published var interval: Double {
+        didSet {
+            defaults.set(interval, forKey: "interval")
+            if interval != oldValue { history = history.mapValues { _ in [] } }
+            restart()
+        }
+    }
     @Published var menuBarMode: MenuBarMode { didSet { defaults.set(menuBarMode.rawValue, forKey: "menuBarMode"); onUpdate?() } }
     @Published var showSensors: Bool { didSet { defaults.set(showSensors, forKey: "showSensors"); syncSensorPanel(); bump() } }
 
@@ -191,6 +200,9 @@ final class Monitor: ObservableObject {
     }
 
     private func publish(_ s: Snapshot) {
+        // A sample the old timer had already started when the interval changed. Its point belongs
+        // to curves that have just been cleared.
+        guard s.interval == interval else { return }
         snap = s
         applyDemo()
         if !s.sensors.isEmpty { sensorList = s.sensors }
@@ -217,7 +229,8 @@ final class Monitor: ObservableObject {
     private var demoAddress: String?
     private func applyDemo() {
         guard !demoProcesses.isEmpty else { return }
-        snap.processes = demoProcesses
+        // In the order the real list would be in, or the stand-ins give the ranking away as fake.
+        snap.processes = snap.processesByMemory ? demoProcesses.sorted { $0.memoryBytes > $1.memoryBytes } : demoProcesses
         if let demoAddress { snap.network.primaryAddress = demoAddress }
     }
 
