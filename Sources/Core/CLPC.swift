@@ -21,39 +21,59 @@ import IOKit
 /// read 5.7 % high at full load and its GPU counter carried an intermittent half watt, so the CPU
 /// stays on the cluster histograms and the GPU on the Energy Model. The CPU counter is still
 /// subscribed — as the witness that the table is the right one for the OS it is running on.
+///
+/// **1.7.1: a Mac with no cluster histograms.** An M3 and an M5 Max list none, so 1.7.0 showed
+/// no CPU power on either and its witness never spoke. There the CPU figure is CLPC's, and the
+/// witness is the GPU pair instead: CLPC's GPU counter against the Energy Model's `GPU Energy`,
+/// the one Energy Model counter macOS 27 still updates every second on every chip.
 enum CLPC {
     /// Table indices for macOS 27.
-    static let cpuIndex: UInt64 = 16, aneIndex: UInt64 = 24
+    static let cpuIndex: UInt64 = 16, gpuIndex: UInt64 = 25, aneIndex: UInt64 = 24
 
-    /// Driver bundle → (CPU key, ANE key).
-    static let keys: [String: (cpu: UInt32, ane: UInt32)] = [
-        "com.apple.driver.AppleT6000CLPCv3": (0x4747_9059, 0x9aaa_17f8),
-        "com.apple.driver.AppleT6002CLPC": (0xb501_816b, 0x14d5_a574),
-        "com.apple.driver.AppleT6020CLPC": (0xe301_cd75, 0x7415_fb0f),
-        "com.apple.driver.AppleT6022CLPC": (0x76f5_fd21, 0x3c09_7307),
-        "com.apple.driver.AppleT6030CLPC": (0xbe03_a01a, 0xb899_0c38),
-        "com.apple.driver.AppleT6031CLPC": (0xd81e_0084, 0x313a_3be1),
-        "com.apple.driver.AppleT6032CLPC": (0xf4a2_1308, 0x63dc_8e25),
-        "com.apple.driver.AppleT6041CLPC": (0x263c_f1f0, 0x7849_fb5c),
-        "com.apple.driver.AppleT6050CLPC": (0xd3ab_60bb, 0x8c0f_1c59),
-        "com.apple.driver.AppleT6050dCLPC": (0x18b3_010e, 0x188b_d883),
-        "com.apple.driver.AppleT8103CLPCv3": (0x2cdd_31f2, 0x0667_fb81),
-        "com.apple.driver.AppleT8112CLPC": (0xb543_5137, 0xea08_9c36),
-        "com.apple.driver.AppleT8122CLPC": (0x54b5_1c99, 0x960a_fe2f),
-        "com.apple.driver.AppleT8132CLPC": (0x4a85_4d94, 0x1ff4_a9ec),
-        "com.apple.driver.AppleT8140CLPC": (0x9bf5_4436, 0x569d_941b),
-        "com.apple.driver.AppleT8142CLPC": (0x4370_8744, 0xbc5e_fdf0),
-        "com.apple.driver.AppleT8152CLPC": (0x485d_4bfc, 0x9380_c6bb),
+    /// Driver bundle → (CPU key, GPU key, ANE key).
+    static let keys: [String: (cpu: UInt32, gpu: UInt32, ane: UInt32)] = [
+        "com.apple.driver.AppleT6000CLPCv3": (0x4747_9059, 0x4519_bf1e, 0x9aaa_17f8),
+        "com.apple.driver.AppleT6002CLPC": (0xb501_816b, 0x9e2c_3e8b, 0x14d5_a574),
+        "com.apple.driver.AppleT6020CLPC": (0xe301_cd75, 0x8f34_cc7a, 0x7415_fb0f),
+        "com.apple.driver.AppleT6022CLPC": (0x76f5_fd21, 0x9062_4499, 0x3c09_7307),
+        "com.apple.driver.AppleT6030CLPC": (0xbe03_a01a, 0x472d_6c9c, 0xb899_0c38),
+        "com.apple.driver.AppleT6031CLPC": (0xd81e_0084, 0x1085_f98b, 0x313a_3be1),
+        "com.apple.driver.AppleT6032CLPC": (0xf4a2_1308, 0x85e8_0513, 0x63dc_8e25),
+        "com.apple.driver.AppleT6041CLPC": (0x263c_f1f0, 0x22e4_cf59, 0x7849_fb5c),
+        "com.apple.driver.AppleT6050CLPC": (0xd3ab_60bb, 0x27cd_4ce5, 0x8c0f_1c59),
+        "com.apple.driver.AppleT6050dCLPC": (0x18b3_010e, 0xedec_a11a, 0x188b_d883),
+        "com.apple.driver.AppleT8103CLPCv3": (0x2cdd_31f2, 0x21be_cf42, 0x0667_fb81),
+        "com.apple.driver.AppleT8112CLPC": (0xb543_5137, 0x638d_9d52, 0xea08_9c36),
+        "com.apple.driver.AppleT8122CLPC": (0x54b5_1c99, 0xce2d_d9dc, 0x960a_fe2f),
+        "com.apple.driver.AppleT8132CLPC": (0x4a85_4d94, 0x3b3e_3b79, 0x1ff4_a9ec),
+        "com.apple.driver.AppleT8140CLPC": (0x9bf5_4436, 0xef70_589c, 0x569d_941b),
+        "com.apple.driver.AppleT8142CLPC": (0x4370_8744, 0x6a01_0933, 0xbc5e_fdf0),
+        "com.apple.driver.AppleT8152CLPC": (0x485d_4bfc, 0x1178_4654, 0x9380_c6bb),
     ]
 
-    static let group = "CLPC", cpuName = "CPU Energy", aneName = "ANE"
+    static let group = "CLPC", cpuName = "CPU Energy", gpuName = "GPU Energy", aneName = "ANE"
 
     /// Report IDs for a driver on an OS, or nil when the table does not cover the pair. Unknown
     /// drivers and every major version but 27 get nothing: a guessed ID reads some other counter.
-    static func reportIDs(bundle: String, osMajor: Int) -> (cpu: UInt64, ane: UInt64)? {
+    static func reportIDs(bundle: String, osMajor: Int) -> (cpu: UInt64, gpu: UInt64, ane: UInt64)? {
         guard osMajor == 27, let k = keys[bundle] else { return nil }
-        return ((cpuIndex << 32) | UInt64(k.cpu), (aneIndex << 32) | UInt64(k.ane))
+        return ((cpuIndex << 32) | UInt64(k.cpu), (gpuIndex << 32) | UInt64(k.gpu), (aneIndex << 32) | UInt64(k.ane))
     }
+
+    /// Names the table a witness has checked: this build of macOS on this driver. A new build
+    /// is a new key, so an update starts from "not yet witnessed" without anyone clearing anything.
+    static let tableKey: String? = {
+        guard let d = driver(),
+              reportIDs(bundle: d.bundle, osMajor: ProcessInfo.processInfo.operatingSystemVersion.majorVersion) != nil
+        else { return nil }
+        var size = 0
+        guard sysctlbyname("kern.osversion", nil, &size, nil, 0) == 0, size > 1 else { return nil }
+        var buf = [CChar](repeating: 0, count: size)
+        guard sysctlbyname("kern.osversion", &buf, &size, nil, 0) == 0 else { return nil }
+        return String(cString: buf) + "|" + d.bundle
+    }()
+    /// The preference that holds the last `tableKey` a witness agreed with.
+    static let witnessedDefault = "clpcWitnessed"
 
     /// This Mac's CLPC driver: its bundle identifier and registry entry ID.
     static func driver() -> (bundle: String, id: UInt64)? {
@@ -69,7 +89,7 @@ enum CLPC {
         return nil
     }
 
-    /// The two channel descriptors to append to an IOReport subscription, or none.
+    /// The three channel descriptors to append to an IOReport subscription, or none.
     ///
     /// Mutable on purpose: IOReport's getters cache what they derive in the dictionary they are
     /// handed. The type and unit words are IOReportTypes.h's — a simple integer in the power
@@ -77,7 +97,7 @@ enum CLPC {
     static func channels(osMajor: Int = ProcessInfo.processInfo.operatingSystemVersion.majorVersion) -> [NSMutableDictionary] {
         guard let d = driver(), let ids = reportIDs(bundle: d.bundle, osMajor: osMajor) else { return [] }
         let type: Int64 = 1 | (2 << 16) | (1 << 32), unit: Int64 = (3 << 56) | (118 << 32)
-        return [(ids.cpu, cpuName), (ids.ane, aneName)].map { id, name in
+        return [(ids.cpu, cpuName), (ids.gpu, gpuName), (ids.ane, aneName)].map { id, name in
             NSMutableDictionary(dictionary: [
                 "DriverID": NSNumber(value: Int64(bitPattern: d.id)), "DriverName": "AppleCLPC",
                 "IOReportGroupName": group, "IOReportSubGroupName": "Energy Counters",

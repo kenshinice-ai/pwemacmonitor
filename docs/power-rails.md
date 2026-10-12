@@ -88,7 +88,8 @@ column's hover.
 `powermetrics`, which runs only as root. `Tools/compare-powermetrics.sh` asks for the password once
 and prints the two side by side, second by second — add `--load` to pin every core while it runs.
 Waiting on the Energy Model's own batches as a reference was tried and dropped: they arrive 6 to
-14 minutes apart, so one comparison costs half an hour.
+14 minutes apart, so one comparison costs half an hour. (Tried again on 2026-10-12 as a witness
+for CLPC, and dropped again: see the last section.)
 
 First run, 2026-09-24, M4 Max, `--load`, twelve one-second samples:
 
@@ -148,7 +149,8 @@ from 23 to 24 between macOS 26 and 27. The table was extracted from Apple's kern
 and 27.0.1; nothing in it says when it stops being right, and a wrong ID reads some other counter
 without complaint.
 
-So the app subscribes to two CLPC counters, not one. The CPU counter is the **witness**: it and the
+So the app subscribes to more CLPC counters than it shows (two in 1.7.0; three since 1.7.1,
+below). The CPU counter is the **witness**: it and the
 histograms measure the same clusters by different routes, and in both runs their 30-second means
 were within 0.4 W of each other. Every 30 seconds `Sampler.clpcAgrees` compares them. While they
 agree to within 1.5 W or a quarter of the reading, the ANE figure is shown. The first time they do
@@ -176,3 +178,80 @@ it always did.
 
 Cost: the two counters add about half a millisecond a sample (9.0 → 9.6 ms for IOReport with all
 three, measured on the app's queue).
+
+## A Mac with no cluster histograms: M3 and M5 Max (1.7.1)
+
+**What 1.7.0 showed.** On two more Macs, both on macOS 27.0.1, the rail under the core row had one
+segment — the GPU. Reported 2026-10-12, the day 1.7.0 shipped:
+
+| Mac | CLPC driver | `--probe`, 40 samples in |
+|---|---|---|
+| iMac, M3 (`Mac15,5`) | `AppleT8122CLPC`, in the table | `cpu — [none]  gpu 2.7 W  ane — [clpc_pending]` |
+| Mac Studio, M5 Max (`Mac17,14`) | `AppleT6050CLPC`, in the table | `cpu — [none]  gpu 51 W  ane — [clpc_pending]` |
+
+**Why.** The CPU rail on macOS 27 is the cluster histograms, found by name: `EACC…`, `PACC…`,
+`MACC…` in `PMP` / `Energy`. Neither Mac has a channel this app recognises as one. The ANE figure
+waits for a witness, and the witness compared CLPC's CPU counter with those same histograms — so
+with none, it never spoke. One cause, both rails. The histogram route had only ever been run on the
+M4 Max it was written on.
+
+Whether those chips have the histograms under another name is **not verified**: the only listing
+taken was a shell pipeline over `ioreg`, which printed nothing on either and may simply not have
+matched. `pwemon --channels` (new in 1.7.1) prints the answer from the API the app itself uses.
+
+**What 1.7.1 does.** Where no cluster histogram is found:
+
+- **The CPU figure is CLPC's own CPU counter** (`cpu_source` is `clpc`).
+- **The witness is the GPU pair**: CLPC's GPU counter against the Energy Model's `GPU Energy` —
+  the one Energy Model counter macOS 27 still updates every second, on every chip. Every 30
+  seconds `Sampler.gpuAgrees` compares their means, but only when the GPU averaged 1.5 W or more:
+  at rest every counter reads about zero beside it and the comparison says nothing. They agree
+  within 0.75 W or a quarter of the reading.
+- Until the witness has agreed, nothing changes from 1.7.0: no CPU segment, no ANE.
+- One refusal stands for the rest of the run, as with the histogram witness.
+
+Where the histograms exist nothing changes: they stay the CPU figure and the witness.
+
+**An agreement is remembered** (both witnesses, since 1.7.1). It is stored with the macOS build
+and the driver (`clpcWitnessed`, for example `26A434|com.apple.driver.AppleT6041CLPC`), and the
+next launch on that build shows CLPC's figures from the first sample. A new build of macOS is a
+new key, so an update starts from "not witnessed". The witnesses go on checking, and a refusal
+removes the entry.
+
+**What the GPU witness rests on.** The two runs of `Tools/compare-rails.sh` above, re-read in
+30-second windows, M4 Max, 2026-10-12:
+
+| Energy Model GPU, window mean | CLPC GPU | Judged |
+|---|---|---|
+| 20.17 W | 20.18 W | agrees |
+| 5.07 W | 5.17 W | agrees |
+| 5.81 W | 6.25 W | agrees |
+| 21.70 W | 22.03 W | agrees |
+| 0.21 W, 0.28 W, 0.24 W | 0.21 W, 0.30 W, 0.51 W | not judged: under the floor |
+
+And the path itself, run on the M4 Max with `PWEMON_NO_HISTOGRAMS=1` (which makes the sampler
+ignore its histograms) beside an unmodified copy, through `Tools/railprobe`'s loads: no CPU figure
+for the first 57 seconds, including 35 with every core busy; then, one window after the GPU load
+began, `cpu … [clpc]` and `ane … [clpc]`. From there CLPC's CPU read 0.1–0.4 W where the histogram
+read 0.3–0.5 W at rest, 1.7–1.9 W against 1.3–1.6 W under Vision work, and the ANE 3.5 W.
+
+**It is indirect, and says so.** A right GPU entry beside a wrong CPU one would pass. The table's
+three entries for a driver come from one extraction, and the indices move together between
+releases, which is the case the witness is there for.
+
+**Not verified.**
+
+- CLPC's CPU counter has not been compared with `powermetrics` on an M3 or an M5 Max. On the M4
+  Max it read 5.7 % high with every core busy, 0.5–0.8 W high at rest, and 22 % high on one 6.8 W
+  load (the table above). Expect the same order on other chips; it is not measured.
+- The GPU pair has not been seen on either chip. If the witness never agrees there, 1.7.1 looks
+  exactly like 1.7.0 on that Mac.
+- A Mac whose GPU never averages 1.5 W over half a minute never gets a verdict. On the M3 iMac the
+  GPU read 2.7–4.8 W at 98 % load, so the floor is not far under what that chip does.
+
+**Tried first, and dropped: the Energy Model's own batch as the witness.** The batch is the CPU's
+true energy, late; CLPC's counter summed between two batches should equal it. A 40-minute log on
+the M4 Max, 2026-10-12, held **one** batch — 9,358 J, 640 seconds in — and then nothing for the
+remaining 29 minutes. A witness needs two to bracket a span. The "6 to 14 minutes" above was what
+September's runs saw, not a rule; what makes a batch land is not known. A check that may take an
+hour to speak, and could not be verified in an evening, was not shipped.

@@ -256,10 +256,29 @@ for (c, h) in [(0.72, 0.92), (0.84, 1.03), (1.02, 1.16), (1.47, 1.51), (1.09, 1.
 require(!Sampler.clpcAgrees(clpc: 0, histogram: 1.2), "on an idle Mac a counter reading nothing must still be refused")
 require(!Sampler.clpcAgrees(clpc: 0.14, histogram: 0.92), "…and so must the GPU's counter, idling at a seventh of a watt")
 require(!Sampler.clpcAgrees(clpc: 2.6, histogram: 1.5), "…and one reading a watt too many")
-require(CLPC.reportIDs(bundle: "com.apple.driver.AppleT6041CLPC", osMajor: 27)! == (0x0000_0010_263c_f1f0, 0x0000_0018_7849_fb5c), "M4 Max, macOS 27: the IDs macmon lists")
+require(CLPC.reportIDs(bundle: "com.apple.driver.AppleT6041CLPC", osMajor: 27)! == (0x0000_0010_263c_f1f0, 0x0000_0019_22e4_cf59, 0x0000_0018_7849_fb5c), "M4 Max, macOS 27: the IDs macmon lists")
 require(CLPC.reportIDs(bundle: "com.apple.driver.AppleT6041CLPC", osMajor: 26) == nil && CLPC.reportIDs(bundle: "com.apple.driver.AppleT6041CLPC", osMajor: 28) == nil,
         "the table is for macOS 27 and says nothing about any other")
 require(CLPC.reportIDs(bundle: "com.apple.driver.AppleUnknownCLPC", osMajor: 27) == nil, "an unknown driver gets no IDs, not a guess")
+
+// ── the GPU witness, and the CPU rail on a Mac with no histograms (1.7.1) ──
+// An M3 and an M5 Max list no cluster histograms: 1.7.0 showed no CPU power there and never let
+// the Neural Engine through. There the GPU pair stands witness. The pairs measured 2026-10-12.
+print("── GPU witness ──")
+for (c, g) in [(20.18, 20.17), (5.17, 5.07), (6.25, 5.81), (22.03, 21.70), (37.77, 37.78), (39.52, 39.51)] {
+    require(Sampler.gpuAgrees(clpc: c, counter: g), "measured GPU pair \(c) W / \(g) W must agree")
+}
+require(!Sampler.gpuAgrees(clpc: 0.51, counter: 0.24), "a GPU at rest is not judged: every idle counter looks alike beside it")
+require(!Sampler.gpuAgrees(clpc: 0.0, counter: 3.1), "the ANE's counter, at rest, read as the GPU's must be refused")
+require(!Sampler.gpuAgrees(clpc: 9.4, counter: 3.1), "the CPU's counter read as the GPU's must be refused")
+require(!Sampler.gpuAgrees(clpc: 1.2, counter: 51), "a counter that does not follow the GPU under load must be refused")
+require(Sampler.gpuAgrees(clpc: 2.0, counter: 1.5) && !Sampler.gpuAgrees(clpc: 2.4, counter: 1.5), "at the floor the margin is three quarters of a watt")
+require(CLPC.reportIDs(bundle: "com.apple.driver.AppleT8122CLPC", osMajor: 27)!.gpu == 0x0000_0019_ce2d_d9dc, "M3, macOS 27: the GPU ID macmon lists")
+require(CLPC.reportIDs(bundle: "com.apple.driver.AppleT6050CLPC", osMajor: 27)!.gpu == 0x0000_0019_27cd_4ce5, "M5 Max, macOS 27: the GPU ID macmon lists")
+let (viaCLPC, viaCLPCSource) = Sampler.cpuPower(counter: 0, counterLive: false, histogram: nil, clpc: 6.3)
+require(viaCLPC == 6.3 && viaCLPCSource == .clpc, "no histograms and a witnessed table: the CPU rail is CLPC's")
+require(Sampler.cpuPower(counter: 0, counterLive: false, histogram: 7.1, clpc: 7.5).1 == .clusterHistogram, "where the histograms exist they still win")
+require(Sampler.cpuPower(counter: 0, counterLive: false, histogram: nil, clpc: nil).1 == .none, "no histograms and no witness: no figure")
 print("  five measured pairs agree; a wrong counter, a dead one and another OS are refused")
 
 // ── network: differences of 32-bit counters, and which link is named (1.6.0) ──

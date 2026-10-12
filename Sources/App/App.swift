@@ -6,6 +6,7 @@ enum PWEMacMonitorMain {
     static func main() {
         let args = CommandLine.arguments
         if args.contains("--portcheck") { exit(CLI.portCheck()) }
+        if args.contains("--channels") { CLI.channels(); return }
         if args.contains("--probe") || args.contains("--json") {
             CLI.run(json: args.contains("--json"), loop: args.contains("--loop"),
                     samples: CLI.number(after: "--samples", in: args).map { Int(max(1, min($0, 1e9))) },
@@ -462,6 +463,40 @@ enum CLI {
         }
     }
 
+    /// `pwemon --channels`: what this Mac calls its power counters.
+    ///
+    /// The CPU rail is read from channels found by name, and the names were learned on one chip.
+    /// 1.7.0 showed no CPU power on an M3 or an M5 Max, and the only way to find out why was a
+    /// shell pipeline over `ioreg`. This prints the same answer from the API the app itself uses:
+    /// short enough to send as a screenshot.
+    static func channels() {
+        let v = ProcessInfo.processInfo.operatingSystemVersion
+        let soc = SocInfo.load()
+        print("\(soc?.chipName ?? "unknown chip") · macOS \(v.majorVersion).\(v.minorVersion).\(v.patchVersion)")
+        if let d = CLPC.driver() {
+            print("CLPC driver   \(d.bundle) — \(CLPC.tableKey != nil ? "in the table" : "not in the table for this macOS")")
+        } else { print("CLPC driver   none") }
+        let all = IOReport.listing()
+        print("Channels      \(all.count)")
+        func names(_ group: String, _ subgroup: String? = nil) -> [String] {
+            all.filter { $0.group == group && (subgroup == nil || $0.subgroup == subgroup) }.map(\.name)
+        }
+        func line(_ title: String, _ list: [String]) {
+            print("\(title)  \(list.isEmpty ? "—" : list.joined(separator: ", "))")
+        }
+        line("PMP / Energy ", names("PMP", "Energy"))
+        line("Energy Model ", names("Energy Model"))
+        let subgroups = Dictionary(grouping: all.filter { $0.group == "PMP" }, by: \.subgroup).map { "\($0.key.isEmpty ? "(none)" : $0.key) ×\($0.value.count)" }.sorted()
+        line("PMP subgroups", subgroups)
+        // A cluster histogram under a name or a place this version does not look: `SACC0`, say.
+        let elsewhere = all.filter { c in
+            !(c.group == "PMP" && c.subgroup == "Energy") && c.name.count >= 5 && c.name.count <= 6
+                && c.name.dropFirst().hasPrefix("ACC") && c.name.dropFirst(4).allSatisfy(\.isNumber)
+        }.map { "\($0.group)/\($0.subgroup)/\($0.name)" }
+        line("Elsewhere    ", Array(Set(elsewhere)).sorted())
+        line("Used for CPU ", names("PMP", "Energy").filter(IOReport.isClusterHistogram))
+    }
+
     /// `pwemon --portcheck`: take two hundred samples and count this process's Mach ports before
     /// and after. Run by `Tools/release.sh` before anything is built to ship.
     ///
@@ -515,7 +550,8 @@ enum CLI {
             // 1.7.0, all additive. `readable` says which rails were measured this sample: a rail
             // that was not still prints 0 in `ane_w` / `ram_w` for the sake of what already reads
             // them, so ask `readable` before believing a zero. `ane_source` is `energy_model`,
-            // `clpc` or `none`. `sys_measured` is false when the SMC gave no system figure and
+            // `clpc` or `none`. Since 1.7.1 `cpu_source` can be `clpc` too: a Mac with no cluster
+            // histograms, once a witness has checked the table. `sys_measured` is false when the SMC gave no system figure and
             // `sys_w` is only the rails added up.
             "power": ["sys_w": s.sysPower, "ane_w": s.anePower, "ram_w": s.ramPower, "all_w": s.allPower,
                       "rails_readable": s.cpuPowerReadable && s.aneReadable && s.ramReadable,

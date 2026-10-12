@@ -115,6 +115,22 @@ final class IOReport {
         subscription = sub; channels = chan
     }
 
+    /// Every channel this Mac lists, as (group, subgroup, name). For `pwemon --channels`: what a
+    /// chip calls its counters is the first thing to know when a rail is missing on it.
+    static func listing() -> [(group: String, subgroup: String, name: String)] {
+        guard let lib = DynamicLibrary("/usr/lib/libIOReport.dylib") ?? DynamicLibrary("libIOReport.dylib"),
+              let copyAll = lib.symbol("IOReportCopyAllChannels", as: CopyAllChannels.self),
+              let group = lib.symbol("IOReportChannelGetGroup", as: GetString.self),
+              let subgroup = lib.symbol("IOReportChannelGetSubGroup", as: GetString.self),
+              let channelName = lib.symbol("IOReportChannelGetChannelName", as: GetString.self),
+              let all = copyAll(0, 0)?.takeRetainedValue() as NSDictionary?,
+              let array = all["IOReportChannels"] as? [NSDictionary] else { return [] }
+        return array.map { item in
+            let cf = item as CFDictionary
+            return (str(group(cf)), str(subgroup(cf)), str(channelName(cf)))
+        }
+    }
+
     private static func str(_ u: Unmanaged<CFString>?) -> String {
         guard let u else { return "" }
         return (u.takeUnretainedValue() as String).trimmingCharacters(in: .whitespaces)

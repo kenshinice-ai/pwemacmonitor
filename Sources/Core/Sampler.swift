@@ -87,6 +87,9 @@ enum PowerSource: String {
     case energyModel = "energy_model"
     /// The PMP per-cluster power histograms — what macOS 27 still updates every second.
     case clusterHistogram = "pmp_histogram"
+    /// CLPC's own CPU counter — for a Mac that has no cluster histograms (M3, M5 Max), and only
+    /// once a witness has said the table fits. See `CLPC` and `Sampler.gpuAgrees`.
+    case clpc
     case none
 }
 
@@ -543,6 +546,10 @@ final class Sampler {
     /// then true, or false for the rest of the run. See `clpcAgrees`.
     private var clpcTrusted: Bool?
     private var witnessCLPC = 0.0, witnessHistogram = 0.0, witnessTime = 0.0
+    private var gpuWitnessCLPC = 0.0, gpuWitnessCounter = 0.0, gpuWitnessTime = 0.0
+    /// `PWEMON_NO_HISTOGRAMS=1` makes this Mac read like one that lists no cluster histograms —
+    /// an M3, an M5 Max — so the path those chips take can be run on the chip it was written on.
+    private let ignoreHistograms = ProcessInfo.processInfo.environment["PWEMON_NO_HISTOGRAMS"] == "1"
     private var pressureClock = PressureClock()
     private var primed = false
     /// `PWEMON_PRESSURE=warning` or `=critical` puts the memory level there for this process, the
@@ -588,6 +595,9 @@ final class Sampler {
         guard let soc = SocInfo.load() else { return nil }
         self.soc = soc
         ioreport = IOReport()
+        // What an earlier run witnessed on this same build of macOS still holds; both witnesses
+        // go on checking, and either one can take it back.
+        if let key = CLPC.tableKey, UserDefaults.standard.string(forKey: CLPC.witnessedDefault) == key { clpcTrusted = true }
         smc = SMC()
         hid = IOHIDSensors()
         if let smc {
@@ -686,7 +696,7 @@ final class Sampler {
             var cores: [CoreMetric] = []
             var emCPU = 0.0, emANE = 0.0, emDRAM = 0.0
             var clusterEnergy = 0.0, clusterTicks = 0.0, sawCluster = false
-            var clpcCPU: Double?, clpcANE: Double?
+            var clpcCPU: Double?, clpcGPU: Double?, clpcANE: Double?
             primed = true
             for ch in sample.channels {
                 switch (ch.group, ch.subgroup) {
@@ -707,8 +717,9 @@ final class Sampler {
                     else if ch.name.hasPrefix("DRAM") { emDRAM += w }
                 case (CLPC.group, _):
                     let w = ioreport.watts(ch, elapsed: sample.elapsed)
-                    if ch.name == CLPC.cpuName { clpcCPU = w } else if ch.name == CLPC.aneName { clpcANE = w }
-                case ("PMP", "Energy") where IOReport.isClusterHistogram(ch.name):
+                    if ch.name == CLPC.cpuName { clpcCPU = w } else if ch.name == CLPC.gpuName { clpcGPU = w }
+                    else if ch.name == CLPC.aneName { clpcANE = w }
+                case ("PMP", "Energy") where IOReport.isClusterHistogram(ch.name) && !ignoreHistograms:
                     let (joulesTicks, ticks) = Self.clusterWatts(ioreport.residencies(ch.item))
                     clusterEnergy += joulesTicks; sawCluster = true
                     clusterTicks = max(clusterTicks, ticks)
@@ -721,16 +732,6 @@ final class Sampler {
             histogramTickRate = max(histogramTickRate, clusterTicks / sample.elapsed)
             let histogram = sawCluster && histogramTickRate > 0
                 ? clusterEnergy / (histogramTickRate * sample.elapsed) : nil as Double?
-            let (cpu, source) = Self.cpuPower(counter: emCPU, counterLive: live, histogram: histogram)
-            s.cpuPower = cpu; s.cpuPowerSource = source
-            if live {
-                // A sample whose CPU counter was rejected as carrying a batch carries the same
-                // batch on ANE and DRAM; hold the last good figures for that one sample rather than
-                // print the spike, or drop the two rails and have the legend flicker.
-                if source == .energyModel { lastANE = emANE; lastDRAM = emDRAM }
-                s.anePower = lastANE; s.ramPower = lastDRAM
-                s.aneReadable = true; s.ramReadable = true; s.aneSource = "energy_model"
-            }
             // The witness. CLPC's CPU counter and the histograms measure the same clusters by two
             // routes, and on a table that fits this OS their 30-second means sit within 0.4 W of
             // each other. A table that does not fit reads some other counter, and they part. So
@@ -743,11 +744,34 @@ final class Sampler {
             if let c = clpcCPU, let h = histogram {
                 witnessCLPC += c * sample.elapsed; witnessHistogram += h * sample.elapsed; witnessTime += sample.elapsed
                 if witnessTime >= Self.witnessWindow {
-                    if clpcTrusted != false {
-                        clpcTrusted = Self.clpcAgrees(clpc: witnessCLPC / witnessTime, histogram: witnessHistogram / witnessTime)
-                    }
+                    judge(Self.clpcAgrees(clpc: witnessCLPC / witnessTime, histogram: witnessHistogram / witnessTime))
                     witnessCLPC = 0; witnessHistogram = 0; witnessTime = 0
                 }
+            }
+            // The second witness, for a Mac with no histograms: the GPU pair. See `gpuAgrees`.
+            // Only there — where the histograms exist they answer in thirty seconds whatever the
+            // GPU is doing, and a second judge could only add a way to refuse a table that works.
+            if histogram == nil, let g = clpcGPU, (0...500).contains(g) {
+                gpuWitnessCLPC += g * sample.elapsed; gpuWitnessCounter += s.gpuPower * sample.elapsed; gpuWitnessTime += sample.elapsed
+                if gpuWitnessTime >= Self.witnessWindow {
+                    let counter = gpuWitnessCounter / gpuWitnessTime
+                    // A GPU at rest says nothing: every counter there is reads about zero beside it.
+                    if counter >= Self.gpuWitnessFloor, clpcCPU.map({ $0 > 0.1 }) ?? false {
+                        judge(Self.gpuAgrees(clpc: gpuWitnessCLPC / gpuWitnessTime, counter: counter))
+                    }
+                    gpuWitnessCLPC = 0; gpuWitnessCounter = 0; gpuWitnessTime = 0
+                }
+            }
+            let (cpu, source) = Self.cpuPower(counter: emCPU, counterLive: live, histogram: histogram,
+                                              clpc: clpcTrusted == true ? clpcCPU : nil)
+            s.cpuPower = cpu; s.cpuPowerSource = source
+            if live {
+                // A sample whose CPU counter was rejected as carrying a batch carries the same
+                // batch on ANE and DRAM; hold the last good figures for that one sample rather than
+                // print the spike, or drop the two rails and have the legend flicker.
+                if source == .energyModel { lastANE = emANE; lastDRAM = emDRAM }
+                s.anePower = lastANE; s.ramPower = lastDRAM
+                s.aneReadable = true; s.ramReadable = true; s.aneSource = "energy_model"
             }
             if !live, clpcANE != nil || clpcCPU != nil {
                 if clpcTrusted == true, let a = clpcANE {
@@ -930,13 +954,25 @@ final class Sampler {
     /// above it — 1.4 times, plus 2 W for the histogram's own coarseness at idle — is a batch, and
     /// the histogram is used for that sample. The same run put the two within 11 % of each other
     /// otherwise, so honest samples sit far inside that margin.
-    static func cpuPower(counter: Double, counterLive: Bool, histogram: Double?) -> (Double, PowerSource) {
+    static func cpuPower(counter: Double, counterLive: Bool, histogram: Double?, clpc: Double? = nil) -> (Double, PowerSource) {
         if counterLive {
             guard let h = histogram, counter > h * 1.4 + 2 else { return (counter, .energyModel) }
             return (h, .clusterHistogram)
         }
         if let h = histogram { return (h, .clusterHistogram) }
+        if let c = clpc { return (c, .clpc) }
         return (0, .none)
+    }
+
+    /// A witness has spoken. One refusal stands for the rest of the run, whichever witness gave
+    /// it; an agreement is remembered for this build of macOS, so the next launch does not wait
+    /// minutes for a batch before it shows what this one has already checked.
+    private func judge(_ agrees: Bool) {
+        guard clpcTrusted != false else { return }
+        clpcTrusted = agrees
+        guard let key = CLPC.tableKey else { return }
+        if agrees { UserDefaults.standard.set(key, forKey: CLPC.witnessedDefault) }
+        else { UserDefaults.standard.removeObject(forKey: CLPC.witnessedDefault) }
     }
 
     /// Seconds of both readings the witness averages before it speaks.
@@ -955,6 +991,27 @@ final class Sampler {
     /// not the CPU's. Quiet pairs measured: 0.72 / 0.92, 0.84 / 1.03, 1.02 / 1.16, 1.47 / 1.51.
     static func clpcAgrees(clpc: Double, histogram: Double) -> Bool {
         clpc > 0.1 && abs(clpc - histogram) <= max(0.5, 0.25 * histogram)
+    }
+
+    /// The GPU has to be doing this much, as a 30-second mean, before the GPU pair is judged.
+    static let gpuWitnessFloor = 1.5
+
+    /// Whether CLPC's GPU counter and the Energy Model's tell the same story over a window.
+    ///
+    /// The witness for a Mac with no cluster histograms. `GPU Energy` is the one Energy Model
+    /// counter macOS 27 still updates every second, on every chip, so it is a reference the CPU
+    /// has lost. If the table's GPU entry reads the GPU, the table fits this OS — the indices
+    /// move together between releases — and the CPU and ANE entries beside it are shown. It is
+    /// indirect: a right GPU entry beside a wrong CPU one would pass, exactly as a right CPU entry
+    /// beside a wrong ANE one passes the histogram witness.
+    ///
+    /// Measured 2026-10-12 on the M4 Max, every 30-second window of two runs in which the GPU
+    /// averaged 1.5 W or more: 20.18 / 20.17, 5.17 / 5.07, 6.25 / 5.81, 22.03 / 21.70 — never more
+    /// than 0.44 W apart. Below the floor CLPC's counter carries an unexplained half watt
+    /// (docs/power-rails.md), and a GPU at rest cannot tell one idle counter from another, so
+    /// those windows are not judged at all.
+    static func gpuAgrees(clpc: Double, counter: Double) -> Bool {
+        counter >= gpuWitnessFloor && abs(clpc - counter) <= max(0.75, 0.25 * counter)
     }
 
     /// A PMP cluster histogram, reduced to watt-ticks and ticks. Each state is a power band named

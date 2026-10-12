@@ -38,8 +38,9 @@
 - **芯片的瓦数去了哪里。** 核心行下方那条堆叠电源轨按路拆分计算功耗 —— CPU、GPU,在 macOS 26
   及更早版本上还有神经网络引擎与 DRAM —— 读自苹果自己的计数器,不是估算出来的。macOS 27 把 CPU、
   ANE、DRAM 的能耗计数器改成每隔几分钟才更新一次;CPU 这一路改从每秒更新的按簇功率直方图恢复,
-  神经网络引擎改读 CLPC 驱动自己的计数器,DRAM 则不显示,而不是显示成 0。每一路都和苹果的
-  `powermetrics` 对照过。[具体做法与对照结果](docs/power-rails.md)(英文)。
+  神经网络引擎改读 CLPC 驱动自己的计数器,DRAM 则不显示,而不是显示成 0。没有这组直方图的芯片
+  (M3、M5 Max)上,CPU 这一路也读 CLPC,前提是 GPU 的两个计数器先对得上。每一路都在 M4 Max 上和
+  苹果的 `powermetrics` 对照过;M3 和 M5 Max 这条路还没有。[具体做法与对照结果](docs/power-rails.md)(英文)。
 - **逐核驻留率。** 每一根柱子是一个物理核心,按频率加权,能效核簇与性能核簇分开显示。
   悬停可看该核的确切频率。平均负载就写在这排柱子下面 —— 它说的正是有多少线程在用、在等这些核心。
 
@@ -177,6 +178,7 @@ Intel 硬件上不存在这些计数器。
 ```bash
 "/Applications/PWE Monitor.app/Contents/MacOS/pwemon" --probe        # 人类可读的一次读数
 "/Applications/PWE Monitor.app/Contents/MacOS/pwemon" --json --loop  # 每行一个 JSON,持续输出
+"/Applications/PWE Monitor.app/Contents/MacOS/pwemon" --channels     # 这颗芯片的功耗计数器叫什么;某条电源轨缺失时报障用
 ```
 
 这两个输出是机器接口,固定为英文。

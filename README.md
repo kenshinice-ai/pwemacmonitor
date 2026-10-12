@@ -42,7 +42,9 @@ Two of these are worth calling out, because most menu-bar monitors do not have t
   counters rather than estimated. macOS 27 updates the CPU, ANE and DRAM energy counters only every
   few minutes; the CPU rail is recovered from the per-cluster power histograms, which still update
   every second, the Neural Engine from the CLPC driver's own counter, and DRAM is left out rather
-  than shown as zero. Each was checked against Apple's `powermetrics`.
+  than shown as zero. A chip that lists no such histograms — an M3, an M5 Max — gets its CPU rail
+  from CLPC as well, once the GPU's two counters have been seen to agree. Each was checked against
+  Apple's `powermetrics` on an M4 Max; the M3 and M5 Max route has not been.
   [How, and what the comparison found](docs/power-rails.md).
 - **Per-core residency.** Each bar is one physical core, frequency-weighted, with the efficiency and
   performance clusters distinguished. Hover a bar for its exact frequency. The load average sits
@@ -293,6 +295,13 @@ Add `--loop` to keep going, or ask for a fixed record:
 
 ```bash
 pwemon --json --samples 60 --interval 2     # two minutes of this Mac, one object a line
+```
+
+If a rail is missing on your Mac, this says what the chip calls its power counters — the first
+thing a bug report about it needs:
+
+```bash
+pwemon --channels
 ```
 
 A rail or a level that was not read is never a number you can mistake for a reading: `--probe`

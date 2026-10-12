@@ -4,33 +4,31 @@
 
 ## 等 Lee
 
-- **[动手] 在 M3 iMac 和 M5 Max Mac Studio 上各跑一次诊断命令，把输出贴回来** — 命令在下面「两台机器上看不到 CPU 和 ANE 功耗」一节 · 不跑就不知道那两颗芯片的功耗通道叫什么，修不了 · 自 2026-10-12
-
-## 两台机器上看不到 CPU 和 ANE 功耗（2026-10-12，未修）
-
-现象：1.7.0 在 M3（8 GB，双风扇）和 M5 Max（Mac Studio）上，功耗条只有 GPU 一段。
-
-已知（读代码）：macOS 27 上 CPU 功耗只来自名为 `EACC*`、`PACC*`、`MACC*` 的 PMP 直方图。ANE 要等证人，证人也要这组直方图。没有直方图，两条轨都不显示。这条路只在 M4 Max 上实测过。
-
-未核实：那两颗芯片上直方图是不存在，还是换了名字。原因：手边没有那两台机器的通道清单。
-
-在每台机器的终端里粘贴运行，约 45 秒：
-
-```bash
-sw_vers -productVersion; sysctl -n machdep.cpu.brand_string hw.model
-ioreg -l -w0 -r -c AppleCLPC | grep -m1 -o '"CFBundleIdentifier" = "[^"]*"'
-ioreg -l -w0 | grep IOReportLegend | grep -o '{[^{}]*"IOReportGroupName"="PMP"[^{}]*{[^{}]*}[^{}]*}' | grep '"IOReportSubGroupName"="Energy"' | grep -o ',"[^"]*")' | tr -d ',")' | sort | paste -sd, -
-"/Applications/PWE Monitor.app/Contents/MacOS/pwemon" --probe --samples 40 | grep Power | tail -2
-```
-
-期望输出（M4 Max，2026-10-12 实测）：第 4 行是 `AGX,AGX AFR,EACC0,EACC0 SRAM,PACC0,PACC0 SRAM,PACC1,PACC1 SRAM`，最后两行带 `cpu … [pmp_histogram]` 和 `ane … [clpc]`。
-
-同一批截图里还看到两处阈值问题，也未修：`Snapshot.powerEnvelope` 对 Max 写的是 140 W，M5 Max 台式机读到 167 W；基础芯片写的是 38 W，iMac 的读数含屏幕，37 W 就转琥珀。
+- **[决定] 是否发布 1.7.1** — 推荐发 · 不发的话 M3 和 M5 Max 上仍然没有 CPU 和 ANE 功耗，新路径也没法在那两台上验证 · 自 2026-10-12
 
 ## 排着要做的
 
 - **pwe-house 的 Monitor 案例图还是 1.5 的面板。** 1.6.0 改了网络卡片，并把负载挪到核心条下面（2026-10-10）。那张图在 paradise-production 仓库，由那边的会话重拍；`docs/dashboard-*.png` 已是新图。
 - **产品页的循环和短片录的是 1.5.2 的面板。** 和 1.6.0 相比，核心条下面少一个「负载」读数；网络卡片在片子里本来就隐藏。差别很小。下次因为别的原因重录时一起更新，不为这一处单独重录。
+
+## 1.7.1 已写好，未发布（2026-10-12）
+
+改动在 `main` 上，已本地提交，未推送。内容和依据在 `docs/power-rails.md` 最后一节。
+
+发布后在 M3 iMac 和 M5 Max Mac Studio 上各做一次核对，负责人 Lee：
+
+1. 让 GPU 忙 1 分钟以上（M5 Max 上跑 LM Studio 即可）。
+2. 运行 `"/Applications/PWE Monitor.app/Contents/MacOS/pwemon" --probe --samples 3`。
+   期望：`Power` 行出现 `cpu … [clpc]` 和 `ane … [clpc]`。
+3. 如果仍是 `cpu — [none]`，运行 `pwemon --channels`，把输出贴回来。
+   这说明 GPU 证人在那颗芯片上没通过；面板和 1.7.0 一样，没有显示错的数。
+
+未核实：CLPC 的 CPU 读数在 M3 和 M5 Max 上的准确度。原因：没有在那两台上和 `powermetrics` 对照。M4 Max 上它满载偏高 5.7 %。
+
+同一批截图里看到、这一版没有动的：
+
+- `Snapshot.powerEnvelope` 对 Max 写的是 140 W，M5 Max 台式机在负载起来的那一秒读到 167 W，结论行于是写「Power warm · 86% to its limit」。86 % 是画法的封顶值，不是量出来的比例。稳定负载时读 102 W，不触发。
+- M5 Max 上整机 102 W、GPU 51 W、CPU 占用 2 %，中间约 50 W 没有对应的电源轨。未核实是哪一部分。
 
 ## 已定
 

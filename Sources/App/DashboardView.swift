@@ -464,7 +464,7 @@ struct DashboardView: View {
                 // disagree. ANE and DRAM have no load reading and stay ink.
                 //
                 // Only rails that are being measured this sample. On macOS 27 the CPU comes from
-                // the cluster power histograms, and ANE and DRAM — which exist only as Energy
+                // the cluster power histograms — or from CLPC on a chip that has none — and ANE and DRAM — which exist only as Energy
                 // Model counters that now arrive every few minutes — are left out rather than
                 // printed as zero. The legend is one line either way, so the card's height holds.
                 let rails = measuredRails
