@@ -4,7 +4,28 @@
 
 ## 等 Lee
 
-没有。
+- **[动手] 在 M3 iMac 和 M5 Max Mac Studio 上各跑一次诊断命令，把输出贴回来** — 命令在下面「两台机器上看不到 CPU 和 ANE 功耗」一节 · 不跑就不知道那两颗芯片的功耗通道叫什么，修不了 · 自 2026-10-12
+
+## 两台机器上看不到 CPU 和 ANE 功耗（2026-10-12，未修）
+
+现象：1.7.0 在 M3（8 GB，双风扇）和 M5 Max（Mac Studio）上，功耗条只有 GPU 一段。
+
+已知（读代码）：macOS 27 上 CPU 功耗只来自名为 `EACC*`、`PACC*`、`MACC*` 的 PMP 直方图。ANE 要等证人，证人也要这组直方图。没有直方图，两条轨都不显示。这条路只在 M4 Max 上实测过。
+
+未核实：那两颗芯片上直方图是不存在，还是换了名字。原因：手边没有那两台机器的通道清单。
+
+在每台机器的终端里粘贴运行，约 45 秒：
+
+```bash
+sw_vers -productVersion; sysctl -n machdep.cpu.brand_string hw.model
+ioreg -l -w0 -r -c AppleCLPC | grep -m1 -o '"CFBundleIdentifier" = "[^"]*"'
+ioreg -l -w0 | grep IOReportLegend | grep -o '{[^{}]*"IOReportGroupName"="PMP"[^{}]*{[^{}]*}[^{}]*}' | grep '"IOReportSubGroupName"="Energy"' | grep -o ',"[^"]*")' | tr -d ',")' | sort | paste -sd, -
+"/Applications/PWE Monitor.app/Contents/MacOS/pwemon" --probe --samples 40 | grep Power | tail -2
+```
+
+期望输出（M4 Max，2026-10-12 实测）：第 4 行是 `AGX,AGX AFR,EACC0,EACC0 SRAM,PACC0,PACC0 SRAM,PACC1,PACC1 SRAM`，最后两行带 `cpu … [pmp_histogram]` 和 `ane … [clpc]`。
+
+同一批截图里还看到两处阈值问题，也未修：`Snapshot.powerEnvelope` 对 Max 写的是 140 W，M5 Max 台式机读到 167 W；基础芯片写的是 38 W，iMac 的读数含屏幕，37 W 就转琥珀。
 
 ## 排着要做的
 
