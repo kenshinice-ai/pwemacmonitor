@@ -237,6 +237,14 @@ let both = warnCh.headline(thermal: .serious, memory: "Memory pressure warning �
 require(both.contains("Performance reduced") && both.contains("Memory pressure warning"), "thermal serious must not hide the memory verdict, got: \(both)")
 var hotDie = Snapshot(); hotDie.thermal = .serious
 require(!hotDie.channels(chipClass: chip).headline(thermal: .serious).contains("CPU"), "…but the die channels it lifts are still said once, not twice")
+// 1.7.2: the power clause quotes the watts. "86 % to its limit" was the drawing's cap: an M5 Max
+// Mac Studio drew 185 W against an envelope of 140.
+var studio = Snapshot(); studio.sysPower = 185
+let studioLine = studio.channels(chipClass: "Max").headline()
+require(studioLine.contains("185 W") && !studioLine.contains("%"), "power warm says its watts, not a capped percentage, got: \(studioLine)")
+require(studio.channels(chipClass: "Max").spoken().contains("185 W"), "…and so does VoiceOver")
+var drained = Snapshot(); drained.sysPower = 5; drained.battery.present = true; drained.battery.percent = 5
+require(drained.channels(chipClass: "Max").headline().contains("%"), "a battery about to run out keeps its percentage: that limit is real")
 var unseen = PressureClock(); unseen.update(.warning, now: 5); unseen.update(.normal, now: 65)
 require(unseen.lastSeconds == 60 && !unseen.lastStartKnown, "a spell whose start was not seen is remembered as a floor")
 

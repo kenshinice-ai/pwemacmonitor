@@ -2,6 +2,7 @@
 "a11y.allCalm" = "All five channels calm.";
 "a11y.band" = "%1$@, %2$d percent of the way to its limit";
 "a11y.channel" = "%1$@ %2$@, %3$d percent of the way to its limit";
+"a11y.figure" = "%1$@ %2$@, %3$@";
 "a11y.joiner" = ". ";
 "a11y.reading" = "%1$@, %2$@";
 "a11y.restCalm" = ". The rest calm.";
@@ -142,6 +143,7 @@
 "value.up" = "up %@";
 "value.waiting" = "Waiting for the first interval…";
 "verdict.calm" = "All five channels calm";
+"verdict.figure" = "%1$@ %2$@ · %3$@";
 "verdict.joiner" = " · ";
 "verdict.lowPower" = "Low Power Mode";
 "verdict.memory.critical" = "Memory pressure critical";

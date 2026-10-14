@@ -266,3 +266,19 @@ the M4 Max, 2026-10-12, held **one** batch — 9,358 J, 640 seconds in — and t
 remaining 29 minutes. A witness needs two to bracket a span. The "6 to 14 minutes" above was what
 September's runs saw, not a rule; what makes a batch land is not known. A check that may take an
 hour to speak, and could not be verified in an evening, was not shipped.
+
+**Reading the witness (1.7.2).** On the M3, after 1.7.1, the GPU averaged 2.3–3.8 W for 45
+seconds and the probe still said `clpc_pending` — not `clpc_refused`. So the witness never judged,
+and three causes fit: CLPC gave no GPU reading, a GPU reading out of range, or a CPU reading at or
+under 0.1 W. 1.7.1 printed none of them. `--probe` now has a `CLPC` line — the three counters as
+read, and where the witness stands with the figures it judged on — and `--json` carries the same
+under `power.clpc`:
+
+```
+CLPC  cpu 7.6 W  gpu 0.5 W  ane 0.0 W  witness: waiting: the GPU averaged 0.36 W (CLPC 0.54 W), under 1.5 W
+```
+
+Also in 1.7.2: a Mac Studio and an iMac each list an `AppleSmartBattery` with nothing in it, which
+`--probe` printed as `Batt 0% … cycles 0`. The battery reader now asks `BatteryInstalled`, as the
+panel's layout already did.
+

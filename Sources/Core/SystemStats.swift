@@ -269,7 +269,11 @@ struct BatteryStats {
 
     static func read() -> BatteryStats {
         var b = BatteryStats()
-        guard let p = ioFirstProperties("AppleSmartBattery") else { return b }
+        // A Mac Studio and an iMac on macOS 27 both list an `AppleSmartBattery` with nothing in it
+        // (2026-10-14: `--probe` printed "0 % … cycles 0" on each). `Sampler.hardware` already
+        // asked `BatteryInstalled`; this did not, and the power channel grades a battery's
+        // charge — a stub that ever said "on battery" would have turned a desktop's feather coral.
+        guard let p = ioFirstProperties("AppleSmartBattery"), (p["BatteryInstalled"] as? Bool) ?? true else { return b }
         b.present = true
         b.percent = p["CurrentCapacity"] as? Int ?? 0
         b.isCharging = p["IsCharging"] as? Bool ?? false

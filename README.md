@@ -57,7 +57,8 @@ not count the same bytes again through a VPN or a relay.
 ## The verdict, in one line
 
 The mark states all five channels exactly, and says nothing. Under the wordmark is the sentence
-that goes with it — *All five channels calm*, or *Memory warm · 81% to its limit · +1 more* —
+that goes with it — *All five channels calm*, *Memory pressure warning · 6m · +2 more*, or
+*Power warm · 185 W* —
 which is also what VoiceOver reads when it reaches the mark. It is the only line in the panel
 that is coloured while everything else is quiet, because colour here means *look at this*.
 

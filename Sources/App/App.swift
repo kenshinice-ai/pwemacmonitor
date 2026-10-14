@@ -528,6 +528,7 @@ enum CLI {
         CPU   \(Fmt.pct(s.cpuUsage))  \(soc.ecpuLabel) \(s.ecpuFreq) MHz  \(soc.pcpuLabel) \(s.pcpuFreq) MHz  temp avg \(Fmt.temp1(s.cpuTemp)) max \(Fmt.temp1(s.cpuTempMax))
         GPU   \(Fmt.pct(s.gpuUsage))  \(s.gpuFreq) MHz  temp \(Fmt.temp1(s.gpuTemp))
         Power sys \(Fmt.watts(s.sysPower))\(s.sysPowerMeasured ? "" : " (rails only)")  cpu \(s.cpuPowerReadable ? Fmt.watts(s.cpuPower) : "—") [\(s.cpuPowerSource.rawValue)]  gpu \(Fmt.watts(s.gpuPower))  ane \(s.aneReadable ? Fmt.watts(s.anePower) : "—") [\(s.aneSource)]  ram \(s.ramReadable ? Fmt.watts(s.ramPower) : "—")
+        CLPC  cpu \(s.clpcCPU.map(Fmt.watts) ?? "—")  gpu \(s.clpcGPU.map(Fmt.watts) ?? "—")  ane \(s.clpcANE.map(Fmt.watts) ?? "—")  witness: \(s.witness)
         SSD   \(Fmt.temp1(s.ssdTemp))  r \(Fmt.rate(s.diskReadPerSec))  w \(Fmt.rate(s.diskWritePerSec))  used \(Fmt.bytes(Double(s.disk.total - s.disk.free))) / \(Fmt.bytes(Double(s.disk.total)))
         Fans  \(s.fans.map { "\($0.id) \($0.rpm) rpm" }.joined(separator: ", "))
         Mem   \(Fmt.gib(s.memory.used)) / \(Fmt.gib(s.memory.total))  swap \(Fmt.gib(s.memory.swapUsed)) (in \(Fmt.rate(s.swapInPerSec)), out \(Fmt.rate(s.swapOutPerSec)))  free \(s.memory.pressure)%  pressure \(s.memory.level?.key ?? "unknown(\(s.memory.levelRaw))")\(s.pressure.text.map { " for " + $0 } ?? "")
@@ -556,7 +557,11 @@ enum CLI {
             "power": ["sys_w": s.sysPower, "ane_w": s.anePower, "ram_w": s.ramPower, "all_w": s.allPower,
                       "rails_readable": s.cpuPowerReadable && s.aneReadable && s.ramReadable,
                       "cpu_source": s.cpuPowerSource.rawValue, "ane_source": s.aneSource, "sys_measured": s.sysPowerMeasured,
-                      "readable": ["cpu": s.cpuPowerReadable, "gpu": true, "ane": s.aneReadable, "ram": s.ramReadable]],
+                      "readable": ["cpu": s.cpuPowerReadable, "gpu": true, "ane": s.aneReadable, "ram": s.ramReadable],
+                      // 1.7.2, additive: CLPC's counters as read (null where it gave nothing) and
+                      // where its witness stands. Diagnostics, not figures to display.
+                      "clpc": ["cpu_w": s.clpcCPU as Any? ?? NSNull(), "gpu_w": s.clpcGPU as Any? ?? NSNull(),
+                               "ane_w": s.clpcANE as Any? ?? NSNull(), "witness": s.witness]],
             "ssd": ["temp": s.ssdTemp, "read_bps": s.diskReadPerSec, "write_bps": s.diskWritePerSec, "total": s.disk.total, "free": s.disk.free],
             "fans": s.fans.map { ["name": $0.id, "rpm": $0.rpm, "max_rpm": $0.maxRPM ?? 0] },
             // `pressure` is the free-memory percentage and always was — higher is better — and

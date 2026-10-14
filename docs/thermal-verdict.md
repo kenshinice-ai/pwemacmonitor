@@ -99,7 +99,10 @@ So a magnitude that has turned warm stays warm until it is clearly below the lin
 | System power | 85 % of the chip's envelope | 80 % |
 
 While it is held, the feather stands on the warm mark and the line reads "72 % to its limit",
-which is what warm has always meant. `Snapshot.held` carries the latch from one sample to the next
+which is what warm has always meant. Power is the exception since 1.7.2: its line quotes the
+watts — "Power warm · 185 W" — because its envelope is a guess per chip class, and an M5 Max
+Mac Studio drawing 185 W against a coded 140 was told "86 % to its limit", the drawing's cap. A
+battery condition still gives a percentage; that limit is real. `Snapshot.held` carries the latch from one sample to the next
 and is the only state a band has; `channels()`, the menu-bar figure and the THERMALS row all read
 it, so they cannot disagree. Holding never lifts anything to coral.
 

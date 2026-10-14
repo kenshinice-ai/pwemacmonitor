@@ -167,6 +167,11 @@ struct ChannelHealth {
     let channel: Channel
     let band: Health
     let fill: Double        // 0…1, clamped for drawing; the band already records any overshoot
+    /// What to quote instead of "N % to its limit", when the limit is ours and not the
+    /// machine's. Power only: the envelope is a guess per chip class, and an M5 Max Mac Studio
+    /// drew 185 W against a coded 140 — the clause read "86 % to its limit", which is the
+    /// drawing's cap, not a measurement. The watts are a measurement.
+    var reading: String? = nil
 }
 
 /// The four readings graded against a threshold we chose, each of which can hover on it.
@@ -269,6 +274,11 @@ struct Snapshot {
     var aneReadable = false, ramReadable = false
     /// Where `anePower` came from: `energy_model`, `clpc`, or `none`.
     var aneSource = "none"
+    /// CLPC's three counters this sample, as read — nil where it gave nothing. For `--probe` and
+    /// `--json`: on the M3, 1.7.1's witness waited without saying why, and three causes fit.
+    var clpcCPU: Double?, clpcGPU: Double?, clpcANE: Double?
+    /// Where the CLPC witness stands, in a few words, with the figures it judged on.
+    var witness = "none"
     var cpuPowerReadable: Bool { cpuPowerSource != .none }
     /// False when the SMC gave no system figure and `sysPower` is only the rails added up.
     var sysPowerMeasured = false
@@ -407,6 +417,7 @@ struct Snapshot {
     func channels(chipClass: String) -> [ChannelHealth] {
         Channel.allCases.map { c in
             let v: Double
+            var reading: String?
             switch c {
             case .memory:
                 // The level places the feather: the warm mark at warning, its tip at critical.
@@ -426,7 +437,8 @@ struct Snapshot {
                 // limits — Apple's operating range and a charge that is about to run out — and
                 // keep their path to hot.
                 let envelope = Snapshot.powerEnvelope(chipClass)
-                var s = strain(.power, sysPower, warm: envelope * Snapshot.powerWarm, hot: envelope)
+                let watts = strain(.power, sysPower, warm: envelope * Snapshot.powerWarm, hot: envelope)
+                var s = watts
                 if battery.present {
                     // `.nextUp` because `strain` grades inclusively and the rule this replaces
                     // was strictly greater. Cheaper to be exact than to argue about whether a
@@ -438,6 +450,9 @@ struct Snapshot {
                     }
                 }
                 v = s
+                // Quoted only when the watts are what lifted it; a battery condition has a real
+                // limit and keeps its percentage.
+                if s <= watts { reading = String(format: "%.0f W", sysPower) }
             // Die temperature fills the feather; macOS decides whether it is a problem. Both
             // feathers take the thermal state because it is one condition on one die — and it is
             // the only signal here that measured out as tracking reality (see `tempWarm`).
@@ -448,7 +463,7 @@ struct Snapshot {
             }
             return ChannelHealth(channel: c,
                                  band: Health.grade(v, warm: Health.warmMark, hot: 1),
-                                 fill: min(1, v))
+                                 fill: min(1, v), reading: reading)
         }
     }
 }
@@ -487,6 +502,8 @@ extension Array where Element == ChannelHealth {
         if let worst = listed.first {
             if worst.channel == .memory, let memory {
                 parts.append(memory)
+            } else if let reading = worst.reading {
+                parts.append(String(format: L("verdict.figure", "%1$@ %2$@ · %3$@"), worst.channel.name, worst.band.word, reading))
             } else {
                 parts.append(String(format: L("verdict.one", "%1$@ %2$@ · %3$d%% to its limit"),
                                     worst.channel.name, worst.band.word, Int((worst.fill * 100).rounded())))
@@ -517,6 +534,9 @@ extension Array where Element == ChannelHealth {
         guard !listed.isEmpty else { return lead + L("a11y.allCalm", "All five channels calm.") }
         let list = listed.map { c -> String in
             if c.channel == .memory, let memory { return memory }
+            if let reading = c.reading {
+                return String(format: L("a11y.figure", "%1$@ %2$@, %3$@"), c.channel.name, c.band.word, reading)
+            }
             return String(format: L("a11y.channel", "%1$@ %2$@, %3$d percent of the way to its limit"),
                           c.channel.name, c.band.word, Int((c.fill * 100).rounded()))
         }
@@ -547,6 +567,8 @@ final class Sampler {
     private var clpcTrusted: Bool?
     private var witnessCLPC = 0.0, witnessHistogram = 0.0, witnessTime = 0.0
     private var gpuWitnessCLPC = 0.0, gpuWitnessCounter = 0.0, gpuWitnessTime = 0.0
+    /// What `Snapshot.witness` says. A refusal, once given, is what it keeps saying.
+    private var witnessNote = "no CLPC table for this Mac and macOS"
     /// `PWEMON_NO_HISTOGRAMS=1` makes this Mac read like one that lists no cluster histograms —
     /// an M3, an M5 Max — so the path those chips take can be run on the chip it was written on.
     private let ignoreHistograms = ProcessInfo.processInfo.environment["PWEMON_NO_HISTOGRAMS"] == "1"
@@ -597,7 +619,11 @@ final class Sampler {
         ioreport = IOReport()
         // What an earlier run witnessed on this same build of macOS still holds; both witnesses
         // go on checking, and either one can take it back.
-        if let key = CLPC.tableKey, UserDefaults.standard.string(forKey: CLPC.witnessedDefault) == key { clpcTrusted = true }
+        if let key = CLPC.tableKey {
+            let remembered = UserDefaults.standard.string(forKey: CLPC.witnessedDefault) == key
+            if remembered { clpcTrusted = true }
+            witnessNote = remembered ? "agreed on an earlier run of this macOS build" : "waiting for its first 30 seconds"
+        }
         smc = SMC()
         hid = IOHIDSensors()
         if let smc {
@@ -739,12 +765,14 @@ final class Sampler {
             // the CPU pair agrees, and once they have disagreed, not again until the app restarts.
             // A counter that ran backwards or jumped — a reset on wake — is not a reading. No Mac's
             // Neural Engine draws fifty watts; neither figure is used outside what is possible.
+            s.clpcCPU = clpcCPU; s.clpcGPU = clpcGPU; s.clpcANE = clpcANE
             if let c = clpcCPU, !(0...500).contains(c) { clpcCPU = nil }
             if let a = clpcANE, !(0...50).contains(a) { clpcANE = nil }
             if let c = clpcCPU, let h = histogram {
                 witnessCLPC += c * sample.elapsed; witnessHistogram += h * sample.elapsed; witnessTime += sample.elapsed
                 if witnessTime >= Self.witnessWindow {
-                    judge(Self.clpcAgrees(clpc: witnessCLPC / witnessTime, histogram: witnessHistogram / witnessTime))
+                    let c = witnessCLPC / witnessTime, h = witnessHistogram / witnessTime
+                    judge(Self.clpcAgrees(clpc: c, histogram: h), String(format: "histogram: CLPC CPU %.2f W, histogram %.2f W", c, h))
                     witnessCLPC = 0; witnessHistogram = 0; witnessTime = 0
                 }
             }
@@ -754,14 +782,22 @@ final class Sampler {
             if histogram == nil, let g = clpcGPU, (0...500).contains(g) {
                 gpuWitnessCLPC += g * sample.elapsed; gpuWitnessCounter += s.gpuPower * sample.elapsed; gpuWitnessTime += sample.elapsed
                 if gpuWitnessTime >= Self.witnessWindow {
-                    let counter = gpuWitnessCounter / gpuWitnessTime
+                    let counter = gpuWitnessCounter / gpuWitnessTime, clpc = gpuWitnessCLPC / gpuWitnessTime
                     // A GPU at rest says nothing: every counter there is reads about zero beside it.
-                    if counter >= Self.gpuWitnessFloor, clpcCPU.map({ $0 > 0.1 }) ?? false {
-                        judge(Self.gpuAgrees(clpc: gpuWitnessCLPC / gpuWitnessTime, counter: counter))
+                    if counter < Self.gpuWitnessFloor {
+                        wait(String(format: "waiting: the GPU averaged %.2f W (CLPC %.2f W), under %.1f W", counter, clpc, Self.gpuWitnessFloor))
+                    } else if !(clpcCPU.map { $0 > 0.1 } ?? false) {
+                        wait("waiting: CLPC's CPU counter reads " + (clpcCPU.map { String(format: "%.2f W", $0) } ?? "nothing"))
+                    } else {
+                        judge(Self.gpuAgrees(clpc: clpc, counter: counter), String(format: "GPU pair: CLPC %.2f W, Energy Model %.2f W", clpc, counter))
                     }
                     gpuWitnessCLPC = 0; gpuWitnessCounter = 0; gpuWitnessTime = 0
                 }
+            } else if histogram == nil, clpcCPU != nil || clpcANE != nil || clpcGPU != nil {
+                wait(clpcGPU.map { String(format: "waiting: CLPC's GPU counter reads %.1f W, which is not a reading", $0) }
+                     ?? "waiting: CLPC gives no GPU reading")
             }
+            s.witness = witnessNote
             let (cpu, source) = Self.cpuPower(counter: emCPU, counterLive: live, histogram: histogram,
                                               clpc: clpcTrusted == true ? clpcCPU : nil)
             s.cpuPower = cpu; s.cpuPowerSource = source
@@ -967,12 +1003,19 @@ final class Sampler {
     /// A witness has spoken. One refusal stands for the rest of the run, whichever witness gave
     /// it; an agreement is remembered for this build of macOS, so the next launch does not wait
     /// minutes for a batch before it shows what this one has already checked.
-    private func judge(_ agrees: Bool) {
+    private func judge(_ agrees: Bool, _ figures: String) {
         guard clpcTrusted != false else { return }
         clpcTrusted = agrees
+        witnessNote = figures + (agrees ? " — agrees" : " — refused for this run")
         guard let key = CLPC.tableKey else { return }
         if agrees { UserDefaults.standard.set(key, forKey: CLPC.witnessedDefault) }
         else { UserDefaults.standard.removeObject(forKey: CLPC.witnessedDefault) }
+    }
+
+    /// Why no verdict yet. Said only while there is none: a remembered agreement or a refusal
+    /// is the more useful thing to keep showing.
+    private func wait(_ why: String) {
+        if clpcTrusted == nil { witnessNote = why }
     }
 
     /// Seconds of both readings the witness averages before it speaks.
