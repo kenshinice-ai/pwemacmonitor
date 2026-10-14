@@ -296,3 +296,30 @@ CPU) is plausible for an M3 but proves nothing by itself. **Not settled.** What 
 `powermetrics` on the M3 beside `pwemon --json`, idle and under GPU load. Until then the M3 shows
 what 1.7.0 showed — GPU only — which is the safe way for the witness to fail.
 
+**Settled, the same day: `powermetrics` on the M3.** Lee ran `sudo powermetrics` beside
+`pwemon --json` for 60 one-second samples, about 25 at rest and 30 with a video on the GPU:
+
+| M3, mean | `powermetrics` | Energy Model | CLPC |
+|---|---|---|---|
+| CPU at rest | 5.11 W | — | **5.12 W** |
+| CPU under load | 13.26 W | — | **13.26 W** |
+| GPU at rest | 0.05 W | 0.05 W | 0.05 W |
+| GPU under load | 1.39 W | 1.38 W | 2.49 W |
+
+- **The table fits the M3.** CLPC's CPU counter is `powermetrics`' CPU Power, second by second —
+  closer than on the M4 Max, where it read 5.7 % high at full load.
+- **CLPC's GPU counter is a GPU counter that counts more.** Zero at rest, rising the second the
+  load began, and about a watt above `powermetrics` under it. `powermetrics`' GPU Power is the
+  Energy Model's figure. What the extra watt is — GPU SRAM is the obvious candidate — is not known.
+- **So 1.7.2's witness was wrong to refuse.** It assumed the two GPU counters agree, which held on
+  the M4 Max and the M5 Max and does not on the M3.
+
+**1.7.3.** `Sampler.gpuAgrees` lets CLPC read up to three quarters (at least 2 W) *above* the Energy
+Model and still only a quarter (at least 0.75 W) below; the floor drops from 1.5 W to 1.0 W. Over
+every 30-sample window of the M3 run the new rule judged 14 and agreed with all 14; it agrees with
+every M4 Max and M5 Max pair above; and the M3's own CPU counter read as its GPU's (5–13 W against
+1.4 W) and the ANE's zero are still refused. The GPU figure the panel shows is unchanged: the Energy
+Model's, which is `powermetrics`'.
+
+Not verified on the M3: the ANE (nothing loaded it during the run).
+

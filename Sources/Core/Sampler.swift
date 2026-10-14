@@ -1037,7 +1037,8 @@ final class Sampler {
     }
 
     /// The GPU has to be doing this much, as a 30-second mean, before the GPU pair is judged.
-    static let gpuWitnessFloor = 1.5
+    /// 1.0 W since 1.7.3: an M3's GPU at 55 % draws about 1.4 W, and 1.5 left it waiting.
+    static let gpuWitnessFloor = 1.0
 
     /// Whether CLPC's GPU counter and the Energy Model's tell the same story over a window.
     ///
@@ -1048,13 +1049,22 @@ final class Sampler {
     /// indirect: a right GPU entry beside a wrong CPU one would pass, exactly as a right CPU entry
     /// beside a wrong ANE one passes the histogram witness.
     ///
-    /// Measured 2026-10-12 on the M4 Max, every 30-second window of two runs in which the GPU
-    /// averaged 1.5 W or more: 20.18 / 20.17, 5.17 / 5.07, 6.25 / 5.81, 22.03 / 21.70 — never more
-    /// than 0.44 W apart. Below the floor CLPC's counter carries an unexplained half watt
-    /// (docs/power-rails.md), and a GPU at rest cannot tell one idle counter from another, so
-    /// those windows are not judged at all.
+    /// **CLPC may read above the Energy Model, not below it.** On the M4 Max and the M5 Max the two
+    /// matched under load: 20.18 / 20.17, 5.17 / 5.07, 6.25 / 5.81, 22.03 / 21.70 (2026-10-12),
+    /// 52 / 52 (2026-10-14). On the M3 CLPC read a watt to a watt and a half more — 4.37 against
+    /// 2.84, 2.5 against 1.4 — and 1.7.2 refused it. `powermetrics` on that M3 the same day settled
+    /// it: its GPU Power is the Energy Model's figure, CLPC's CPU counter matched its CPU Power
+    /// to within 2 % from 4.9 to 15 W, and CLPC's GPU counter sat at zero with the GPU at rest and
+    /// rose the second the load began. A GPU counter that defines the GPU more widely, not a table
+    /// that does not fit. So the band is lopsided: up to a quarter (at least 0.75 W) below, up to
+    /// three quarters (at least 2 W) above. What a misread table gives is still outside it — the
+    /// M3's own CPU counter read as its GPU's, 5 to 13 W against 1.4, and the ANE's zero.
+    ///
+    /// Below the floor nothing is judged: a GPU at rest cannot tell one idle counter from another.
     static func gpuAgrees(clpc: Double, counter: Double) -> Bool {
-        counter >= gpuWitnessFloor && abs(clpc - counter) <= max(0.75, 0.25 * counter)
+        counter >= gpuWitnessFloor
+            && clpc >= counter - max(0.75, 0.25 * counter)
+            && clpc <= counter + max(2.0, 0.75 * counter)
     }
 
     /// A PMP cluster histogram, reduced to watt-ticks and ticks. Each state is a power band named

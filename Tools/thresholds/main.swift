@@ -280,7 +280,14 @@ require(!Sampler.gpuAgrees(clpc: 0.51, counter: 0.24), "a GPU at rest is not jud
 require(!Sampler.gpuAgrees(clpc: 0.0, counter: 3.1), "the ANE's counter, at rest, read as the GPU's must be refused")
 require(!Sampler.gpuAgrees(clpc: 9.4, counter: 3.1), "the CPU's counter read as the GPU's must be refused")
 require(!Sampler.gpuAgrees(clpc: 1.2, counter: 51), "a counter that does not follow the GPU under load must be refused")
-require(Sampler.gpuAgrees(clpc: 2.0, counter: 1.5) && !Sampler.gpuAgrees(clpc: 2.4, counter: 1.5), "at the floor the margin is three quarters of a watt")
+// 1.7.3: the M3's GPU pairs, measured 2026-10-14 beside powermetrics. CLPC reads a watt or so above.
+for (c, g) in [(4.37, 2.84), (2.54, 1.41), (2.44, 1.35), (2.52, 1.47)] {
+    require(Sampler.gpuAgrees(clpc: c, counter: g), "M3 GPU pair \(c) W / \(g) W must agree")
+}
+require(!Sampler.gpuAgrees(clpc: 12.9, counter: 1.4) && !Sampler.gpuAgrees(clpc: 5.0, counter: 1.4),
+        "the M3's CPU counter read as its GPU's, 5 to 13 W against 1.4, must still be refused")
+require(Sampler.gpuAgrees(clpc: 1.0, counter: 1.0) && !Sampler.gpuAgrees(clpc: 0.9, counter: 0.95), "the floor is a watt")
+require(!Sampler.gpuAgrees(clpc: 0.2, counter: 1.2), "CLPC well below the Energy Model is refused: the band is lopsided")
 require(CLPC.reportIDs(bundle: "com.apple.driver.AppleT8122CLPC", osMajor: 27)!.gpu == 0x0000_0019_ce2d_d9dc, "M3, macOS 27: the GPU ID macmon lists")
 require(CLPC.reportIDs(bundle: "com.apple.driver.AppleT6050CLPC", osMajor: 27)!.gpu == 0x0000_0019_27cd_4ce5, "M5 Max, macOS 27: the GPU ID macmon lists")
 let (viaCLPC, viaCLPCSource) = Sampler.cpuPower(counter: 0, counterLive: false, histogram: nil, clpc: 6.3)
