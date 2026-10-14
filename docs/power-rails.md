@@ -249,6 +249,17 @@ releases, which is the case the witness is there for.
 - A Mac whose GPU never averages 1.5 W over half a minute never gets a verdict. On the M3 iMac the
   GPU read 2.7–4.8 W at 98 % load, so the floor is not far under what that chip does.
 
+**After release, 2026-10-14** (Lee ran 1.7.1's `--probe` and `--channels` on both Macs):
+
+| Mac | What `--channels` showed | 1.7.1 |
+|---|---|---|
+| M5 Max | Histograms exist, but in group `PMP0`, not `PMP`, and only `MACC0` and `MACC1` — the two clusters of twelve Performance cores. None for the six Super cores (`PACC_0`…`PACC_5` are per-core Energy Model counters). | Witness agreed under a GPU load. `cpu 8.7 W [clpc]`, `ane 0.0 W [clpc]`; the panel shows CPU, GPU and ANE. |
+| M3 | `PMP` has no `Energy` subgroup at all: no histograms anywhere. | `cpu — [none]`, `ane [clpc_pending]`: the GPU stayed at 0.2 W, under the witness's floor. |
+
+So on the M5 Max reading `PMP0` would have been worse than CLPC: it would leave out the Super
+cluster. CLPC stays the source there. On the M3 CLPC is the only source. The M3 waits for one
+half-minute of GPU work; after that the verdict is remembered.
+
 **Tried first, and dropped: the Energy Model's own batch as the witness.** The batch is the CPU's
 true energy, late; CLPC's counter summed between two batches should equal it. A 40-minute log on
 the M4 Max, 2026-10-12, held **one** batch — 9,358 J, 640 seconds in — and then nothing for the
