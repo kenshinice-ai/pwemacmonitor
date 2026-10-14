@@ -245,6 +245,13 @@ require(studioLine.contains("185 W") && !studioLine.contains("%"), "power warm s
 require(studio.channels(chipClass: "Max").spoken().contains("185 W"), "…and so does VoiceOver")
 var drained = Snapshot(); drained.sysPower = 5; drained.battery.present = true; drained.battery.percent = 5
 require(drained.channels(chipClass: "Max").headline().contains("%"), "a battery about to run out keeps its percentage: that limit is real")
+// 1.7.5: the process order follows the pressure unless someone clicked the title for the other one.
+require(Sampler.processOrder(level: .normal, requested: nil) == .cpu && Sampler.processOrder(level: nil, requested: nil) == .cpu,
+        "at rest, or with no level read, the busiest processes")
+require(Sampler.processOrder(level: .warning, requested: nil) == .memory && Sampler.processOrder(level: .critical, requested: nil) == .memory,
+        "under pressure, the largest")
+require(Sampler.processOrder(level: .normal, requested: .memory) == .memory && Sampler.processOrder(level: .warning, requested: .cpu) == .cpu,
+        "a click wins over the pressure while it holds")
 var unseen = PressureClock(); unseen.update(.warning, now: 5); unseen.update(.normal, now: 65)
 require(unseen.lastSeconds == 60 && !unseen.lastStartKnown, "a spell whose start was not seen is remembered as a floor")
 

@@ -163,6 +163,8 @@ and not restarted when warning becomes critical. A spell already under way when 
 printed as a floor: "12m+". The verdict line says the same thing in place of a percentage:
 *Memory pressure warning · 12m*. And while the pressure lasts, the process list is ordered by
 memory instead of CPU, because the question has changed from who is busy to who is holding it.
+Since 1.7.5 a click on the card's title asks for the other order; the choice holds until the
+pressure level next changes, and then the list follows the machine again (`Sampler.processOrder`).
 
 `Tools/thresholds` sweeps every combination of memory in use, free percentage and level —
 12,663 of them — and fails if anything but the level moves the band.

@@ -33,7 +33,7 @@ Everything on one page, refreshed every 1–5 seconds.
 | **IOReport** | Per-core frequency and usage for both CPU clusters · GPU frequency and usage · CPU / GPU / Neural Engine / DRAM power |
 | **SMC** | CPU and GPU die temperatures · fan RPM and maximum · whole-system power draw |
 | **IOHID** | SSD (NAND) temperature · battery temperature · every PMU die sensor — around 200 in total |
-| **Mach / sysctl / IOKit** | Memory (app, wired, compressed, swap and its read/write rate, macOS's own pressure level and how long it has held) · SSD capacity and throughput · network throughput and address · load average · battery percentage, power flow, cycles and health · top processes |
+| **Mach / sysctl / IOKit** | Memory (app, wired, compressed, swap and its read/write rate, macOS's own pressure level and how long it has held) · SSD capacity and throughput · network throughput and address · load average · battery percentage, power flow, cycles and health · top processes (by CPU, or by memory while macOS reports pressure — click the card's title for the other order) |
 
 Two of these are worth calling out, because most menu-bar monitors do not have them:
 

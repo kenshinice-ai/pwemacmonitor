@@ -161,3 +161,5 @@
 "verdict.figure" = "%1$@%2$@ · %3$@";
 "a11y.figure" = "%1$@%2$@,%3$@";
 "menu.support" = "支持 PWE…";
+"help.sortCPU" = "点按改为按 CPU 排序";
+"help.sortMemory" = "点按改为按内存排序";

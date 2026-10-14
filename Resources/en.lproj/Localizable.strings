@@ -45,6 +45,8 @@
 "help.refresh.many" = "Refresh every %d seconds";
 "help.refresh.one" = "Refresh every second";
 "help.scaled" = "The share of the chip's capacity in use, weighted by clock speed: a core running at half its top speed counts for half.";
+"help.sortCPU" = "Click to order by CPU";
+"help.sortMemory" = "Click to order by memory";
 "help.swapIO" = "Read back from swap · written out to swap, each second. Writing is what a Mac short of memory does; reading back is what makes it feel slow.";
 "help.thermalState" = "Reported by macOS from the machine's own thermal budget. 'Performance reduced' means the system is already throttling; the temperatures below are readings, not verdicts.";
 "help.traffic" = "Traffic on this Mac's own links — Ethernet and Wi-Fi, not counted again through a VPN. Top of the chart: %@.";

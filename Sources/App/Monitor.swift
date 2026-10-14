@@ -37,6 +37,16 @@ enum AppError {
 /// is open — which is also when the sampler collects the expensive detail (process table, full
 /// sensor list).
 /// A boolean shared between the main actor and the sampler queue.
+/// The process order someone asked for, read by the sampling queue. Nil: follow the pressure.
+final class LockedOrder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var order: ProcessSampler.Order?
+    var value: ProcessSampler.Order? {
+        get { lock.lock(); defer { lock.unlock() }; return order }
+        set { lock.lock(); order = newValue; lock.unlock() }
+    }
+}
+
 final class LockedFlag: @unchecked Sendable {
     private let lock = NSLock()
     private var flag = false
@@ -113,6 +123,10 @@ final class Monitor: ObservableObject {
     private let wantsAllSensors = LockedFlag()
     /// Whether the panel is on screen, for the sampler: the process table only earns its cost then.
     private let panelOpen = LockedFlag()
+    /// What the process card's title was clicked to, and the pressure level it was clicked at.
+    /// The choice lasts until the level changes: then the list follows the machine again.
+    private let requestedOrder = LockedOrder()
+    private var choiceLevel: MemoryPressure??
 
     var onUpdate: (() -> Void)?
     /// Supplied by the app delegate: pops the shared settings menu, anchored to the given view.
@@ -189,20 +203,43 @@ final class Monitor: ObservableObject {
         // taken at 2.2, and it lets the system fire this timer alongside others instead of waking
         // a core for it alone.
         t.schedule(deadline: .now() + 0.05, repeating: iv, leeway: .milliseconds(Int(iv * 100)))
-        let wantsAll = self.wantsAllSensors, open = self.panelOpen
+        let wantsAll = self.wantsAllSensors, open = self.panelOpen, order = self.requestedOrder
         t.setEventHandler { [weak self] in
             // Reading `isOpen` needs the main actor; the flags carry it across, then sample off it.
-            let s = sampler.sample(interval: iv, allSensors: wantsAll.value, detail: open.value)
+            let s = sampler.sample(interval: iv, allSensors: wantsAll.value, detail: open.value, order: order.value)
             DispatchQueue.main.async { MainActor.assumeIsolated { self?.publish(s) } }
         }
         t.resume()
         timer = t
     }
 
+    /// The process card's title was clicked: show the other order now, and keep it until macOS's
+    /// memory pressure level next changes. The table is re-read on the sampling queue rather than
+    /// re-sorted here, because the eight busiest processes are not the eight largest.
+    func toggleProcessOrder() {
+        let next: ProcessSampler.Order = snap.processesByMemory ? .cpu : .memory
+        requestedOrder.value = next
+        choiceLevel = .some(snap.memory.level)
+        guard let sampler else { return }
+        queue.async { [weak self] in
+            let list = sampler.processes(by: next)
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    guard let self, self.requestedOrder.value == next else { return }
+                    self.snap.processes = list
+                    self.snap.processesByMemory = next == .memory
+                    self.applyDemo()
+                    self.bump()
+                }
+            }
+        }
+    }
+
     private func publish(_ s: Snapshot) {
         // A sample the old timer had already started when the interval changed. Its point belongs
         // to curves that have just been cleared.
         guard s.interval == interval else { return }
+        if let level = choiceLevel, level != s.memory.level { choiceLevel = nil; requestedOrder.value = nil }
         snap = s
         applyDemo()
         if !s.sensors.isEmpty { sensorList = s.sensors }

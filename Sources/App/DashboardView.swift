@@ -521,11 +521,14 @@ struct DashboardView: View {
     private var processes: some View {
         // While macOS reports memory pressure the list is the largest processes, not the
         // busiest, and the title says so. The same two columns in the same two places: the one the
-        // list is ordered by takes the weight. No switch — the list answers whichever question
-        // the machine is raising.
+        // list is ordered by takes the weight. The title is also the switch (1.7.5): it already
+        // names the order, so clicking it asks for the other one, until the pressure level changes.
         let byMemory = s.processesByMemory
         return Card(dark: dark, title: byMemory ? L("card.processesMemory", "TOP PROCESSES · BY MEMORY")
-                                                : L("card.processes", "TOP PROCESSES · % OF ONE CORE")) {
+                                                : L("card.processes", "TOP PROCESSES · % OF ONE CORE"),
+                    titleAction: monitor.sampler == nil ? nil : { monitor.toggleProcessOrder() },
+                    titleHelp: byMemory ? L("help.sortCPU", "Click to order by CPU")
+                                        : L("help.sortMemory", "Click to order by memory")) {
             VStack(spacing: 5) {
                 ForEach(0..<6, id: \.self) { i in
                     let p = i < s.processes.count ? s.processes[i] : nil
@@ -824,10 +827,19 @@ struct Card<Content: View>: View {
     /// Stretch to the height offered. Set on cards inside the paired grid, so a row's two
     /// backgrounds share an edge instead of each stopping at its own content.
     var fills: Bool = false
+    /// Makes the title a button. Only the process card has one: its title names the order.
+    var titleAction: (() -> Void)? = nil
+    var titleHelp: String? = nil
     @ViewBuilder let content: Content
     var body: some View {
         VStack(alignment: .leading, spacing: Theme.s2) {
-            if let title { SectionLabel(title, dark: dark) }
+            if let title, let titleAction {
+                Button(action: titleAction) { SectionLabel(title, dark: dark).contentShape(Rectangle()) }
+                    .buttonStyle(.plain)
+                    .help(titleHelp ?? "")
+                    .accessibilityHint(titleHelp ?? "")
+                    .onHover { inside in if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() } }
+            } else if let title { SectionLabel(title, dark: dark) }
             content
         }
         .padding(Theme.s3)

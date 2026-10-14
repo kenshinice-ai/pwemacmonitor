@@ -712,7 +712,10 @@ final class Sampler {
     ///   so it only runs while the panel is actually on screen.
     /// - Parameter detail: someone is reading the panel. The process table is the one source
     ///   nothing but the panel shows; see where it is sampled.
-    func sample(interval: Double, allSensors: Bool = false, detail: Bool = true) -> Snapshot {
+    /// - Parameter order: the process order someone asked for by clicking the card's title, or
+    ///   nil to follow the memory pressure level. See `processOrder(level:requested:)`.
+    func sample(interval: Double, allSensors: Bool = false, detail: Bool = true,
+                order requested: ProcessSampler.Order? = nil) -> Snapshot {
         var s = Snapshot()
         s.interval = interval
         s.uptime = ProcessInfo.processInfo.systemUptime
@@ -939,10 +942,9 @@ final class Sampler {
         // Half a second, not one: at the 1 s setting the timer's leeway can bring two ticks a
         // shade under a second apart, and the table would then skip every other one.
         //
-        // The list follows the trouble. While macOS reports memory pressure the question is who
-        // is holding the memory, so the table is ordered by footprint; the moment the order
-        // changes it is read again rather than left showing the other ranking.
-        let order: ProcessSampler.Order = (s.memory.level ?? .normal) == .normal ? .cpu : .memory
+        // The list follows the trouble unless someone has asked for an order; the moment the
+        // order changes it is read again rather than left showing the other ranking.
+        let order = Self.processOrder(level: s.memory.level, requested: requested)
         if order != procOrder || s.uptime - lastProcSample >= (detail ? 0.5 : 10) {
             cachedProcs = procs.top(8, by: order)
             lastProcSample = s.uptime; procOrder = order
@@ -950,6 +952,23 @@ final class Sampler {
         s.processes = cachedProcs
         s.processesByMemory = procOrder == .memory
         return s
+    }
+
+    /// The process table re-read now in the given order, for a click that should not wait for the
+    /// next tick. Call it on the sampling queue, like `sample`.
+    func processes(by order: ProcessSampler.Order) -> [ProcessStat] {
+        cachedProcs = procs.top(8, by: order)
+        lastProcSample = ProcessInfo.processInfo.systemUptime; procOrder = order
+        return cachedProcs
+    }
+
+    /// Which order the process table is in. While macOS reports memory pressure the question is
+    /// who is holding the memory, so the table is ordered by footprint, otherwise by CPU. Since
+    /// 1.7.5 a click on the card's title asks for the other order, and that holds until the
+    /// pressure level next changes (`Monitor.toggleProcessOrder`): Lee asked to be able to see
+    /// the memory holders whenever he likes, and the machine still gets to raise its question.
+    static func processOrder(level: MemoryPressure?, requested: ProcessSampler.Order?) -> ProcessSampler.Order {
+        requested ?? ((level ?? .normal) == .normal ? .cpu : .memory)
     }
 
     /// Every temperature the machine exposes. Costs a full SMC and IOHID sweep (~70 ms), so it is
