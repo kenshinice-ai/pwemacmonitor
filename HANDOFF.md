@@ -4,8 +4,8 @@
 
 ## 等 Lee
 
-- **[决定] 支持入口是否推送、上线、随 1.7.4 发布** — 推荐三件一起做：推送 `.github/FUNDING.yml` 和 README，部署产品页，发 1.7.4（菜单里的「支持 PWE…」）· 不定则 Monitor 没有任何支持入口，产品页还写着「没有更新检查」这句不准确的话 · 自 2026-10-14
-- **[决定] 两个仓库打开 GitHub 的 Sponsorships 开关（pwemacmonitor、pwe-lumen-bar）** — 推荐打开，我可以用 API 打开 · 不开则 `FUNDING.yml` 不显示 Sponsor 按钮：Lumen Bar 的已提交，但开关是关的（2026-10-14 查） · 自 2026-10-14
+- **[决定] 支持入口是否推送、上线、发布（Monitor 与 PC MONITOR 一起）** — 推荐：推送两个仓库（`FUNDING.yml`、README、菜单入口），部署产品页，发 Monitor 1.7.4；PC MONITOR 推送后由 CI 编译验证，下次发版带上 · 不定则两个 app 都没有支持入口，产品页还写着「没有更新检查」这句不准确的话 · 自 2026-10-14
+- **[决定] 打开 `pwemacmonitor`、`pwepcmonitor` 两个仓库的 Sponsorships 开关** — 推荐打开，我可以用 API 打开 · 不开则 `FUNDING.yml` 不会在 GitHub 上显示 Sponsor 按钮（2026-10-14 查：开关是关的） · 自 2026-10-14
 
 ## 排着要做的
 
