@@ -4,7 +4,7 @@
 
 ## 等 Lee
 
-- **[决定] 是否发布 1.7.2** — 推荐发 · 不发就看不到 M3 上证人为什么不判（1.7.1 在 GPU 2.3–3.8 W 下 45 秒仍是 `clpc_pending`），功耗结论也继续报假的百分比 · 自 2026-10-14
+- **[动手] 在 M3 iMac 上装 1.7.2，GPU 忙着时跑一次 `--probe --samples 45 | grep CLPC | tail -2`，把两行贴回来** — 这一行说出证人为什么不判 · 不跑就修不了 M3 · 自 2026-10-14
 
 ## 排着要做的
 
@@ -41,6 +41,8 @@
 - 1.6.0（2026-10-10）：结论在 95 °C 附近来回跳的问题已加迟滞，回落到 92 °C 才放开；产品页「负载上来，外侧的羽毛先转琥珀」已改成按热量说。记录在 `docs/thermal-verdict.md`。
 - 1.6.0 修掉的端口泄漏、三处读数不准和实测占用，记录在 `docs/sampling.md`。发版脚本会先跑 `pwemon --portcheck`。
 - 1.6.0 于 2026-10-10 发布：GitHub release、cask、pwestudio.site 的安装包与更新端点都是 1.6.0，发布后的安装包回下核对过校验和与 Gatekeeper 结论。
+- 1.7.2 于 2026-10-14 发布：`--probe` 和 `--json` 印出 CLPC 读数与证人状态；功耗结论报瓦数；台式机不再当成有电池。GitHub release、cask、站点安装包与更新端点都是 1.7.2，回下核对过校验和（`c4b05bf2…f447cbe1`）与 Gatekeeper 结论。
+- M5 Max Mac Studio 上 1.7.1 的 GPU 证人已通过（2026-10-14）：CPU 8.7 W、ANE 都读 CLPC。
 - 1.7.1 于 2026-10-14 发布：GitHub release、cask、pwestudio.site 的安装包与更新端点都是 1.7.1，回下核对过校验和（`f232354f…19450d60`）与 Gatekeeper 结论。
 - 1.7.0（2026-10-12）把 32 号和 33 号方案合在一起做了（Lee：1.7 和 1.8 一起做）。内存只认系统的三态，已用比例不再触发任何颜色（Lee 定）；CPU 功耗保留直方图，GPU 保留 Energy Model，CLPC 只用来恢复 ANE，并带证人——依据是当晚和 `powermetrics` 的两次对照，记录在 `docs/power-rails.md` 和 `docs/thermal-verdict.md`。
 - 每次 macOS 更新后照 `docs/power-rails.md` 的「After a macOS update」三步核对 CLPC 的表。不核对也不会出错：证人会让 ANE 自己消失，回到 1.6.0 的样子。
