@@ -280,16 +280,22 @@ The same binary is a CLI:
 
 ```
 Apple M4 Max · 64 GB · E4+P12 · GPU 40
-CPU   17%  E 2113 MHz  P 3847 MHz  temp avg 54.0°C max 61.7°C
-GPU   100%  1578 MHz  temp 63.3°C
-Power sys 85 W  cpu 0.5 W  gpu 38 W  ane 0.0 W  ram 0.6 W
-SSD   28.0°C  r 0 B/s  w 0 B/s  used 932 GB / 2.0 TB
-Fans  Fan 1 1351 rpm, Fan 2 1469 rpm
-Mem   41.2 GB / 64.0 GB  swap 0.0 GB  pressure 78
-Net   ↓ 3.9 MB/s  ↑ 46.0 KB/s  en0
-Load  2.41  2.12  1.98
-Batt  80% +0.0 W 30.1°C cycles 11
+CPU   20%  E 1997 MHz  P 4087 MHz  temp avg 46.8°C max 57.0°C
+GPU   6%  338 MHz  temp 45.9°C
+Power sys 22 W  cpu 10.0 W [pmp_histogram]  gpu 0.5 W  ane 0.0 W [clpc]  ram —
+CLPC  cpu 9.0 W  gpu 0.5 W  ane 0.0 W  witness: agreed on an earlier run of this macOS build
+SSD   30.0°C  r 2.9 MB/s  w 6.1 MB/s  used 874 GB / 2.0 TB
+Fans  Fan 1 0 rpm, Fan 2 0 rpm
+Mem   41.9 GB / 64.0 GB  swap 2.1 GB (in 0 B/s, out 0 B/s)  free 77%  pressure normal
+Net   ↓ 19.1 KB/s  ↑ 40.0 KB/s  en0
+Load  3.93  6.27  6.55
+Batt  80% +0.0 W 29.3°C cycles 14
 ```
+
+Brackets name where a power figure came from; `ram —` is a rail macOS 27 does not report every
+second, printed as a dash rather than a zero. The `CLPC` line is diagnostics: the driver's own
+counters as read, and whether the check that guards them has passed on this Mac
+([why there is a check](docs/power-rails.md)).
 
 `--json` emits one object per line, including every sensor, for piping into something else.
 Add `--loop` to keep going, or ask for a fixed record:

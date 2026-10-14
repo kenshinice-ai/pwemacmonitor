@@ -323,3 +323,28 @@ Model's, which is `powermetrics`'.
 
 Not verified on the M3: the ANE (nothing loaded it during the run).
 
+## What three chips taught (2026-10-12 to 10-14)
+
+1.7.0 shipped a power route proven on one M4 Max. It took three more releases in one day to make it
+right on an M3 and an M5 Max. What made it take three, and what to do next time:
+
+- **A route proven on one chip is proven on one chip.** The M4 Max has cluster histograms in `PMP`;
+  the M3 has none; the M5 Max has them in `PMP0`, and only for two of its three clusters. Before
+  shipping a source, list what the other chips call it — `pwemon --channels` exists for that.
+- **A reading that is not shown must say why.** 1.7.1 printed `clpc_pending` for a witness that
+  could be waiting for four different reasons. 1.7.2 was released only to print the reason. Every
+  "not shown" state carries its reason and the figures behind it from the start.
+- **A check calibrated on two chips encodes their quirks.** The GPU witness assumed CLPC's GPU
+  counter equals the Energy Model's, true on the M4 Max and the M5 Max, false on the M3. When a
+  check refuses, get ground truth — one minute of `sudo powermetrics` beside `pwemon --json` —
+  before deciding which side is wrong. It took one run to settle what three releases had not.
+- **A batch is not a schedule.** "Every 6 to 14 minutes" was what one month saw; one evening saw one
+  batch in forty minutes. Do not build on a timing nobody controls.
+- **A figure on screen must be a measurement.** "86 % to its limit" was the drawing's cap applied
+  to an envelope the M5 Max exceeded by a third. Quote what was measured.
+- **One hardware fact, one place to read it.** The layout asked `BatteryInstalled`; the battery
+  reader did not, and two desktops printed a 0 % battery.
+- **A check you hand to someone must fit the state they are in.** `--probe --samples 3` cannot show
+  a 30-second witness that has not yet run in that process. Give the command that shows the answer
+  from a cold start (45 samples), and say what each possible result means.
+
