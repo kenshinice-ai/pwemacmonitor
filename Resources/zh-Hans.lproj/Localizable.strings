@@ -85,7 +85,6 @@
 "menu.style" = "菜单栏样式";
 "menu.updateReady" = "下载 %@ 版…";
 "menu.updates" = "检查更新…";
-"menu.updates" = "检查更新…";
 "menu.updatesAuto" = "自动检查";
 "menu.version" = "版本 %@";
 "menubar.compact" = "功耗 + 温度";
@@ -161,3 +160,4 @@
 "verdict.reading" = "读取中…";
 "verdict.figure" = "%1$@%2$@ · %3$@";
 "a11y.figure" = "%1$@%2$@,%3$@";
+"menu.support" = "支持 PWE…";

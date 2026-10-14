@@ -4,7 +4,8 @@
 
 ## 等 Lee
 
-没有。
+- **[决定] 支持入口是否推送、上线、随 1.7.4 发布** — 推荐三件一起做：推送 `.github/FUNDING.yml` 和 README，部署产品页，发 1.7.4（菜单里的「支持 PWE…」）· 不定则 Monitor 没有任何支持入口，产品页还写着「没有更新检查」这句不准确的话 · 自 2026-10-14
+- **[决定] 两个仓库打开 GitHub 的 Sponsorships 开关（pwemacmonitor、pwe-lumen-bar）** — 推荐打开，我可以用 API 打开 · 不开则 `FUNDING.yml` 不显示 Sponsor 按钮：Lumen Bar 的已提交，但开关是关的（2026-10-14 查） · 自 2026-10-14
 
 ## 排着要做的
 
@@ -35,6 +36,8 @@
 - M5 Max 上整机 102 W、GPU 51 W、CPU 占用 2 %，中间约 50 W 没有对应的电源轨。未核实是哪一部分。
 
 ## 已定
+
+- 支持与致谢跟 PWE Lumen Bar 的决定一致（Lee 2026-10-14，见 Lumen Bar `HANDOVER.md` §六）：所有免费 PWE 工具共用 `pwestudio.site/support`；app 里只有菜单一个入口，不弹窗、不计天数、不锁功能；`FUNDING.yml` 指向同一页。GitHub Sponsors 整个 PWE 共用一个，开通后加到支持页，由 Lumen Bar 的「等 Lee」跟踪，这里不重复。
 
 - `--panel-window` 留在源码里（Lee 2026-10-10）。它把面板放进一个不抢焦点、不会自己关的窗口，录片用；app 里没有入口。
 - 短片 Lee 看过（2026-10-10）。页面循环已上 pwestudio.site/macmonitor。短片本身还没发到任何地方。

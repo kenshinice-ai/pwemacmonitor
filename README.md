@@ -417,6 +417,13 @@ measured against, and shaped what this one chose to do differently.
 Full notices, including the SIL Open Font License for the bundled typefaces, are in
 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
+## Support
+
+PWE Monitor is free and will stay that way: nothing is locked, and the app never asks. If it has
+earned a place in your menu bar, [pwestudio.site/support](https://pwestudio.site/support) says how
+to give something back — one page for every free PWE tool. The most useful thing is often a report
+from a Mac we do not have: open an issue with what `pwemon --probe` and `pwemon --channels` print.
+
 ## Licence
 
 Source code: [MIT](LICENSE).

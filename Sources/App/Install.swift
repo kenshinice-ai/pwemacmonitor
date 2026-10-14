@@ -14,6 +14,10 @@ enum Install {
 
     static let repositoryURL = URL(string: "https://github.com/kenshinice-ai/pwemacmonitor")!
     static let releasesURL = URL(string: "https://github.com/kenshinice-ai/pwemacmonitor/releases/latest")!
+    /// One page for every free PWE tool (PWE Lumen Bar's `Brand.support` is the same address), so
+    /// how to give something back can change without shipping a build. The app links to it from
+    /// the menu and nowhere else: no prompt, no count of days, nothing locked (Lee, 2026-10-14).
+    static let supportURL = URL(string: "https://pwestudio.site/support")!
 
     private static let applications = "/Applications"
     private static let promptedKey = "didOfferToMoveToApplications"

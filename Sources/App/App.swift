@@ -339,6 +339,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         autoUpdates.target = self
         let source = menu.addItem(withTitle: L("menu.source", "Source Code on GitHub"), action: #selector(openRepository), keyEquivalent: "")
         source.target = self
+        let support = menu.addItem(withTitle: L("menu.support", "Support PWE…"), action: #selector(openSupport), keyEquivalent: "")
+        support.target = self
         let version = menu.addItem(withTitle: String(format: L("menu.version", "Version %@"), Install.version), action: nil, keyEquivalent: "")
         version.isEnabled = false
 
@@ -408,6 +410,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     @objc private func openRepository() { NSWorkspace.shared.open(Install.repositoryURL) }
+    @objc private func openSupport() { NSWorkspace.shared.open(Install.supportURL) }
     @objc private func toggleLaunchAtLogin() { monitor.launchAtLogin.toggle() }
     @objc private func setMode(_ item: NSMenuItem) {
         if let r = item.representedObject as? String, let m = MenuBarMode(rawValue: r) { monitor.menuBarMode = m }

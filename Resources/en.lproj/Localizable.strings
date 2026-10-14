@@ -75,6 +75,7 @@
 "menu.sensors" = "All Sensors";
 "menu.source" = "Source Code on GitHub";
 "menu.style" = "Menu Bar Style";
+"menu.support" = "Support PWE…";
 "menu.updateReady" = "Download version %@…";
 "menu.updates" = "Check for Updates…";
 "menu.updatesAuto" = "Check automatically";

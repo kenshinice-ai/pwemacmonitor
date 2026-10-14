@@ -188,6 +188,13 @@ Intel 硬件上不存在这些计数器。
 见 [English README](README.md) —— 构建、性能开销、代码结构和发布步骤都在那里,
 面向的是会去读源码的人。
 
+## 支持
+
+PWE Monitor 免费，而且会一直免费：没有锁住的功能，app 也从不开口要。如果它在你的菜单栏里派上了
+用场，[pwestudio.site/support](https://pwestudio.site/support) 说明了怎么支持我们 —— 所有免费的
+PWE 工具共用这一页。最有用的往往是一份来自我们没有的 Mac 的报告：开一个 issue，附上
+`pwemon --probe` 和 `pwemon --channels` 的输出。
+
 ## 授权
 
 MIT。见 [LICENSE](LICENSE) 与 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
