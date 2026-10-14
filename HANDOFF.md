@@ -19,8 +19,11 @@
 
 1. 用 Homebrew 或 app 内更新装上 1.7.1。期望：`pwemon --probe` 第一行之前没有报错，关于窗口写 1.7.1。
 2. 让 GPU 忙 1 分钟以上（M5 Max 上跑 LM Studio 即可）。
-3. 运行 `"/Applications/PWE Monitor.app/Contents/MacOS/pwemon" --probe --samples 3`。
-   期望：`Power` 行出现 `cpu … [clpc]` 和 `ane … [clpc]`。
+3. GPU 还忙着的时候，运行 `"/Applications/PWE Monitor.app/Contents/MacOS/pwemon" --probe --samples 45 | grep Power | tail -3`，约 45 秒。
+   期望：最后几行出现 `cpu … [clpc]` 和 `ane … [clpc]`。
+   如果是 `[clpc_pending]`：这 45 秒里 GPU 的 30 秒平均没到 1.5 W，证人没有判。
+   如果是 `[clpc_refused]`：证人判了，两个 GPU 计数器对不上。
+   只跑 3 个样本不够：新进程要自己看满 30 秒才判，除非菜单栏里的 app 已经判过并记住。
 4. 如果仍是 `cpu — [none]`，运行 `pwemon --channels`，把输出贴回来。
    这说明 GPU 证人在那颗芯片上没通过；面板和 1.7.0 一样，没有显示错的数。
 
