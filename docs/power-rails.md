@@ -282,3 +282,17 @@ Also in 1.7.2: a Mac Studio and an iMac each list an `AppleSmartBattery` with no
 `--probe` printed as `Batt 0% … cycles 0`. The battery reader now asks `BatteryInstalled`, as the
 panel's layout already did.
 
+**What it said on the M3 (2026-10-14, 1.7.2).** With the GPU busy:
+
+```
+CLPC  cpu 11 W  gpu 4.2 W  ane 0.0 W  witness: GPU pair: CLPC 4.37 W, Energy Model 2.84 W — refused for this run
+```
+
+The witness did judge — the 1.7.1 `pending` was a GPU that had not yet averaged 1.5 W — and
+refused: CLPC's GPU counter read 54 % above the Energy Model's, where on the M4 Max and the M5 Max
+the two matched under load. That is either a table entry reading some other counter, or two
+counters that define "GPU" differently on this chip. The CPU figure CLPC gave (11 W at about 40 %
+CPU) is plausible for an M3 but proves nothing by itself. **Not settled.** What would settle it:
+`powermetrics` on the M3 beside `pwemon --json`, idle and under GPU load. Until then the M3 shows
+what 1.7.0 showed — GPU only — which is the safe way for the witness to fail.
+
