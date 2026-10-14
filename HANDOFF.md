@@ -4,8 +4,7 @@
 
 ## 等 Lee
 
-- **[决定] 支持入口是否推送、上线、发布（Monitor 与 PC MONITOR 一起）** — 推荐：推送两个仓库（`FUNDING.yml`、README、菜单入口），部署产品页，发 Monitor 1.7.4；PC MONITOR 推送后由 CI 编译验证，下次发版带上 · 不定则两个 app 都没有支持入口，产品页还写着「没有更新检查」这句不准确的话 · 自 2026-10-14
-- **[决定] 打开 `pwemacmonitor`、`pwepcmonitor` 两个仓库的 Sponsorships 开关** — 推荐打开，我可以用 API 打开 · 不开则 `FUNDING.yml` 不会在 GitHub 上显示 Sponsor 按钮（2026-10-14 查：开关是关的） · 自 2026-10-14
+没有。
 
 ## 排着要做的
 
@@ -44,6 +43,7 @@
 - 1.6.0（2026-10-10）：结论在 95 °C 附近来回跳的问题已加迟滞，回落到 92 °C 才放开；产品页「负载上来，外侧的羽毛先转琥珀」已改成按热量说。记录在 `docs/thermal-verdict.md`。
 - 1.6.0 修掉的端口泄漏、三处读数不准和实测占用，记录在 `docs/sampling.md`。发版脚本会先跑 `pwemon --portcheck`。
 - 1.6.0 于 2026-10-10 发布：GitHub release、cask、pwestudio.site 的安装包与更新端点都是 1.6.0，发布后的安装包回下核对过校验和与 Gatekeeper 结论。
+- 1.7.4 于 2026-10-14 发布：菜单里的「支持 PWE…」；`FUNDING.yml`；产品页的支持按钮，以及更正「没有更新检查」那句。GitHub release、cask、站点安装包与更新端点都是 1.7.4，回下核对过校验和（`881bbb3f…779a32aca`）与 Gatekeeper 结论。`pwemacmonitor` 和 `pwepcmonitor` 的 Sponsorships 开关已打开（Lee 2026-10-14），Sponsor 按钮指向支持页。PC MONITOR 的支持入口已推送，CI 编译通过（运行 38560046515），下次发版带上。
 - 1.7.3 于 2026-10-14 发布：GPU 证人允许 CLPC 偏高（依据是 M3 上的 `powermetrics` 对照，CLPC 的 CPU 读数与之逐秒吻合）。GitHub release、cask、站点安装包与更新端点都是 1.7.3，回下核对过校验和（`12cccc42…3737ec741`）与 Gatekeeper 结论。
 - 1.7.2 于 2026-10-14 发布：`--probe` 和 `--json` 印出 CLPC 读数与证人状态；功耗结论报瓦数；台式机不再当成有电池。GitHub release、cask、站点安装包与更新端点都是 1.7.2，回下核对过校验和（`c4b05bf2…f447cbe1`）与 Gatekeeper 结论。
 - M5 Max Mac Studio 上 1.7.1 的 GPU 证人已通过（2026-10-14）：CPU 8.7 W、ANE 都读 CLPC。
