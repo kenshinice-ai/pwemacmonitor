@@ -4,23 +4,24 @@
 
 ## 等 Lee
 
-- **[决定] 是否发布 1.7.1** — 推荐发 · 不发的话 M3 和 M5 Max 上仍然没有 CPU 和 ANE 功耗，新路径也没法在那两台上验证 · 自 2026-10-12
+- **[动手] 在 M3 iMac 和 M5 Max Mac Studio 上核对 1.7.1** — 步骤在下面「1.7.1」一节，约 2 分钟一台 · 不核对就不知道 GPU 证人在那两颗芯片上通不通过 · 自 2026-10-14
 
 ## 排着要做的
 
 - **pwe-house 的 Monitor 案例图还是 1.5 的面板。** 1.6.0 改了网络卡片，并把负载挪到核心条下面（2026-10-10）。那张图在 paradise-production 仓库，由那边的会话重拍；`docs/dashboard-*.png` 已是新图。
 - **产品页的循环和短片录的是 1.5.2 的面板。** 和 1.6.0 相比，核心条下面少一个「负载」读数；网络卡片在片子里本来就隐藏。差别很小。下次因为别的原因重录时一起更新，不为这一处单独重录。
 
-## 1.7.1 已写好，未发布（2026-10-12）
+## 1.7.1（2026-10-14 发布）
 
-改动在 `main` 上，已本地提交，未推送。内容和依据在 `docs/power-rails.md` 最后一节。
+内容和依据在 `docs/power-rails.md` 最后一节。
 
-发布后在 M3 iMac 和 M5 Max Mac Studio 上各做一次核对，负责人 Lee：
+在 M3 iMac 和 M5 Max Mac Studio 上各做一次核对，负责人 Lee：
 
-1. 让 GPU 忙 1 分钟以上（M5 Max 上跑 LM Studio 即可）。
-2. 运行 `"/Applications/PWE Monitor.app/Contents/MacOS/pwemon" --probe --samples 3`。
+1. 用 Homebrew 或 app 内更新装上 1.7.1。期望：`pwemon --probe` 第一行之前没有报错，关于窗口写 1.7.1。
+2. 让 GPU 忙 1 分钟以上（M5 Max 上跑 LM Studio 即可）。
+3. 运行 `"/Applications/PWE Monitor.app/Contents/MacOS/pwemon" --probe --samples 3`。
    期望：`Power` 行出现 `cpu … [clpc]` 和 `ane … [clpc]`。
-3. 如果仍是 `cpu — [none]`，运行 `pwemon --channels`，把输出贴回来。
+4. 如果仍是 `cpu — [none]`，运行 `pwemon --channels`，把输出贴回来。
    这说明 GPU 证人在那颗芯片上没通过；面板和 1.7.0 一样，没有显示错的数。
 
 未核实：CLPC 的 CPU 读数在 M3 和 M5 Max 上的准确度。原因：没有在那两台上和 `powermetrics` 对照。M4 Max 上它满载偏高 5.7 %。
@@ -37,6 +38,7 @@
 - 1.6.0（2026-10-10）：结论在 95 °C 附近来回跳的问题已加迟滞，回落到 92 °C 才放开；产品页「负载上来，外侧的羽毛先转琥珀」已改成按热量说。记录在 `docs/thermal-verdict.md`。
 - 1.6.0 修掉的端口泄漏、三处读数不准和实测占用，记录在 `docs/sampling.md`。发版脚本会先跑 `pwemon --portcheck`。
 - 1.6.0 于 2026-10-10 发布：GitHub release、cask、pwestudio.site 的安装包与更新端点都是 1.6.0，发布后的安装包回下核对过校验和与 Gatekeeper 结论。
+- 1.7.1 于 2026-10-14 发布：GitHub release、cask、pwestudio.site 的安装包与更新端点都是 1.7.1，回下核对过校验和（`f232354f…19450d60`）与 Gatekeeper 结论。
 - 1.7.0（2026-10-12）把 32 号和 33 号方案合在一起做了（Lee：1.7 和 1.8 一起做）。内存只认系统的三态，已用比例不再触发任何颜色（Lee 定）；CPU 功耗保留直方图，GPU 保留 Energy Model，CLPC 只用来恢复 ANE，并带证人——依据是当晚和 `powermetrics` 的两次对照，记录在 `docs/power-rails.md` 和 `docs/thermal-verdict.md`。
 - 每次 macOS 更新后照 `docs/power-rails.md` 的「After a macOS update」三步核对 CLPC 的表。不核对也不会出错：证人会让 ANE 自己消失，回到 1.6.0 的样子。
 - Swap 换出速率没有在真实内存压力下验证过（换入验证了，峰值 166 MB/s）。两者是同一对计数器、同一种算法。
