@@ -168,9 +168,10 @@ struct ChannelHealth {
     let band: Health
     let fill: Double        // 0…1, clamped for drawing; the band already records any overshoot
     /// What to quote instead of "N % to its limit", when the limit is ours and not the
-    /// machine's. Power only: the envelope is a guess per chip class, and an M5 Max Mac Studio
+    /// machine's. Power (1.7.2): the envelope is a guess per chip class, and an M5 Max Mac Studio
     /// drew 185 W against a coded 140 — the clause read "86 % to its limit", which is the
-    /// drawing's cap, not a measurement. The watts are a measurement.
+    /// drawing's cap, not a measurement. The watts are a measurement. The two die channels
+    /// (1.7.6) quote their temperature for the same reason.
     var reading: String? = nil
 }
 
@@ -456,10 +457,18 @@ struct Snapshot {
             // Die temperature fills the feather; macOS decides whether it is a problem. Both
             // feathers take the thermal state because it is one condition on one die — and it is
             // the only signal here that measured out as tracking reality (see `tempWarm`).
+            //
+            // A die's strain caps at the warm band like the watts, so past `tempFill` the clause
+            // read "86 % to its limit" — the cap, on an M4 Max at 113 °C. The temperature is what
+            // was measured; quote it whenever it, not macOS's thermal state, set the feather.
             case .gpu:
-                v = max(strain(.gpuTemp, gpuTemp, warm: Snapshot.tempWarm, hot: Snapshot.tempFill), thermal.strain)
+                let t = strain(.gpuTemp, gpuTemp, warm: Snapshot.tempWarm, hot: Snapshot.tempFill)
+                v = max(t, thermal.strain)
+                if t >= thermal.strain, gpuTemp > 0 { reading = String(format: "%.0f°C", gpuTemp) }
             case .cpu:
-                v = max(strain(.cpuTempMax, cpuTempMax, warm: Snapshot.tempWarm, hot: Snapshot.tempFill), thermal.strain)
+                let t = strain(.cpuTempMax, cpuTempMax, warm: Snapshot.tempWarm, hot: Snapshot.tempFill)
+                v = max(t, thermal.strain)
+                if t >= thermal.strain, cpuTempMax > 0 { reading = String(format: "%.0f°C", cpuTempMax) }
             }
             return ChannelHealth(channel: c,
                                  band: Health.grade(v, warm: Health.warmMark, hot: 1),

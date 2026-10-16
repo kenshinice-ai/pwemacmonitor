@@ -252,6 +252,15 @@ require(Sampler.processOrder(level: .warning, requested: nil) == .memory && Samp
         "under pressure, the largest")
 require(Sampler.processOrder(level: .normal, requested: .memory) == .memory && Sampler.processOrder(level: .warning, requested: .cpu) == .cpu,
         "a click wins over the pressure while it holds")
+// 1.7.6: a hot die quotes its temperature. An M4 Max at 113 °C was told "86% to its limit", the cap.
+var hotCPU = Snapshot(); hotCPU.cpuTempMax = 113.2; hotCPU.cpuTemp = 104.3
+let hotLine = hotCPU.channels(chipClass: "Max").headline()
+require(hotLine.contains("113°C") && !hotLine.contains("%"), "a hot CPU says its temperature, got: \(hotLine)")
+var hotGPU = Snapshot(); hotGPU.gpuTemp = 101
+require(hotGPU.channels(chipClass: "Max").headline().contains("101°C"), "…and so does a hot GPU")
+var stateOnly = Snapshot(); stateOnly.cpuTempMax = 60; stateOnly.thermal = .serious
+require(stateOnly.channels(chipClass: "Max").first { $0.channel == .cpu }?.reading == nil,
+        "a feather lifted by macOS's thermal state, not the reading, does not quote the reading")
 var unseen = PressureClock(); unseen.update(.warning, now: 5); unseen.update(.normal, now: 65)
 require(unseen.lastSeconds == 60 && !unseen.lastStartKnown, "a spell whose start was not seen is remembered as a floor")
 

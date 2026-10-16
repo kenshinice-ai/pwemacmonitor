@@ -836,6 +836,10 @@ struct Card<Content: View>: View {
             if let title, let titleAction {
                 Button(action: titleAction) { SectionLabel(title, dark: dark).contentShape(Rectangle()) }
                     .buttonStyle(.plain)
+                    // As every other button in the panel: without these the popover hands this one
+                    // the first focus and draws the system's blue ring round the title (1.7.5).
+                    .focusable(false)
+                    .focusEffectDisabled()
                     .help(titleHelp ?? "")
                     .accessibilityHint(titleHelp ?? "")
                     .onHover { inside in if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() } }

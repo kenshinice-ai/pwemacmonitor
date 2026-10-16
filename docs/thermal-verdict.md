@@ -102,7 +102,10 @@ While it is held, the feather stands on the warm mark and the line reads "72 % t
 which is what warm has always meant. Power is the exception since 1.7.2: its line quotes the
 watts — "Power warm · 185 W" — because its envelope is a guess per chip class, and an M5 Max
 Mac Studio drawing 185 W against a coded 140 was told "86 % to its limit", the drawing's cap. A
-battery condition still gives a percentage; that limit is real. `Snapshot.held` carries the latch from one sample to the next
+battery condition still gives a percentage; that limit is real. Since 1.7.6 the CPU and GPU do the
+same with their temperature — "CPU warm · 113°C" — after an M4 Max at 113 °C was told "86 % to
+its limit". A feather that macOS's thermal state lifted, rather than the reading, keeps the
+percentage. `Snapshot.held` carries the latch from one sample to the next
 and is the only state a band has; `channels()`, the menu-bar figure and the THERMALS row all read
 it, so they cannot disagree. Holding never lifts anything to coral.
 
