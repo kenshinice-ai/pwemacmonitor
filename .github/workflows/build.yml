@@ -93,3 +93,6 @@ jobs:
           path: |
             build/*.dmg
             build/SHA256SUMS.txt
+          # A week is enough to fetch a build from a run. Releases keep the downloads; the account's
+          # artifact storage filled up at 90 days (2026-10-16) and blocked the upload step.
+          retention-days: 7
