@@ -203,3 +203,17 @@ never that the machine wants one.
 Note that the probe measures whatever else is running too. The first run of this one was taken on a
 Mac that turned out to be rendering video throughout, which is why its cooldown phase never cooled.
 Check what else is busy before reading the numbers as a baseline.
+
+## What 1.7.4 to 1.7.6 taught (2026-10-14 to 10-16)
+
+- **Fix the class, not the case in front of you.** 1.7.2 stopped the power line printing "86 % to
+  its limit", the drawing's cap. The CPU and GPU lines cap the same way and kept doing it until an
+  M4 Max at 113 °C showed it in 1.7.6. When a fix is about a kind of thing — every magnitude that
+  caps at warm — list every member before shipping.
+- **Check the surface people see.** 1.7.5's clickable title was verified in `--panel-window`, a
+  borderless window. The popover gives first focus to the first focusable view, so there it wore
+  the system's blue focus ring. Computer use cannot see the popover; Lee's screenshot did.
+- **A new control copies the panel's controls.** Every other button already had
+  `.focusable(false)` and `.focusEffectDisabled()`. A new one starts from those, not from
+  `.buttonStyle(.plain)` alone.
+
