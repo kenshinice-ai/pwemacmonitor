@@ -43,6 +43,7 @@
 - 1.6.0（2026-10-10）：结论在 95 °C 附近来回跳的问题已加迟滞，回落到 92 °C 才放开；产品页「负载上来，外侧的羽毛先转琥珀」已改成按热量说。记录在 `docs/thermal-verdict.md`。
 - 1.6.0 修掉的端口泄漏、三处读数不准和实测占用，记录在 `docs/sampling.md`。发版脚本会先跑 `pwemon --portcheck`。
 - 1.6.0 于 2026-10-10 发布：GitHub release、cask、pwestudio.site 的安装包与更新端点都是 1.6.0，发布后的安装包回下核对过校验和与 Gatekeeper 结论。
+- 1.7.6 于 2026-10-16 发布：修 1.7.5 的进程卡片标题在面板打开时出现蓝色焦点框；CPU / GPU 过热时结论行报温度，不再报封顶的「86% to its limit」。GitHub release、cask、站点安装包与更新端点都是 1.7.6，回下核对过校验和（`85175879…3d6faa2`）与 Gatekeeper 结论。
 - 1.7.5 于 2026-10-14 发布：点进程卡片标题在 CPU / 内存排序间切换，选择保持到内存压力级别变化（Lee 要求）。GitHub release、cask、站点安装包与更新端点都是 1.7.5，回下核对过校验和（`566a029c…88bd6d6e`）与 Gatekeeper 结论。
 - 1.7.4 于 2026-10-14 发布：菜单里的「支持 PWE…」；`FUNDING.yml`；产品页的支持按钮，以及更正「没有更新检查」那句。GitHub release、cask、站点安装包与更新端点都是 1.7.4，回下核对过校验和（`881bbb3f…779a32aca`）与 Gatekeeper 结论。`pwemacmonitor` 和 `pwepcmonitor` 的 Sponsorships 开关已打开（Lee 2026-10-14），Sponsor 按钮指向支持页。PC MONITOR 的支持入口已推送，CI 编译通过（运行 38560046515），下次发版带上。
 - 1.7.3 于 2026-10-14 发布：GPU 证人允许 CLPC 偏高（依据是 M3 上的 `powermetrics` 对照，CLPC 的 CPU 读数与之逐秒吻合）。GitHub release、cask、站点安装包与更新端点都是 1.7.3，回下核对过校验和（`12cccc42…3737ec741`）与 Gatekeeper 结论。
