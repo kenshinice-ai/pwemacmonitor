@@ -242,6 +242,12 @@ Before it builds anything to ship it runs three checks, and stops on the first t
 | `pwemon --portcheck` | Two hundred samples do not cost a Mach port. [Why that one exists](docs/sampling.md). |
 | `Tools/thresholds` | Every band in the interface, across every reachable reading. |
 
+After notarising — the app on its own, then the disk image, each stapled — and before it tags, it
+asks one more question of the app inside the disk image: `../ship-check.sh` (shared by the PWE apps
+in `07 TOOLS/`). It stops unless the app carries its own ticket, is signed by our Developer ID with
+the hardened runtime and no entitlements, links only system libraries, and has no local path,
+loopback or staging address in its strings. Its summary goes first in the GitHub release notes.
+
 > ⚠️ Run it with the Mac unlocked, and keep it unlocked until it finishes. With the screen locked
 > `notarytool` cannot read its stored profile, and the script stops at preflight saying the
 > credentials are missing. They are not missing: the keychain does not release them to a locked

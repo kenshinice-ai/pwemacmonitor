@@ -110,8 +110,46 @@ if [[ "${1:-}" == "--run" ]]; then
   open "build/$APP_NAME.app"
 fi
 
+# Submit a file to Apple and stop unless it was accepted. `notarytool --wait` exits 0 on a finished
+# submission whatever Apple decided, so the status is read, and on a rejection the log says why.
+notarise() {
+  local out id
+  out="$(xcrun notarytool submit "$1" --keychain-profile "$NOTARY_PROFILE" --wait 2>&1)" || true
+  echo "$out" | sed 's/^/    /'
+  if ! grep -q "status: Accepted" <<<"$out"; then
+    id="$(grep -m1 "  id: " <<<"$out" | awk '{print $2}')"
+    echo "✗ Apple did not accept $(basename "$1")"
+    [[ -n "$id" ]] && xcrun notarytool log "$id" --keychain-profile "$NOTARY_PROFILE" 2>&1 | sed 's/^/    /'
+    exit 1
+  fi
+}
+
+# Staple, waiting for the ticket if Apple has not published it yet. Right after "Accepted" the
+# ticket's record can still be missing: stapler fails with "Record not found", error 65 (AI Bar's
+# app, 2026-10-18, stapled fine on a retry seconds later). Five tries, ten seconds apart.
+staple() {
+  local i
+  for i in 1 2 3 4 5; do
+    xcrun stapler staple "$1" >/dev/null 2>&1 && { xcrun stapler validate "$1"; return 0; }
+    echo "    ticket not published yet — retrying in 10 s ($i/5)"; sleep 10
+  done
+  echo "✗ could not staple $(basename "$1")"; xcrun stapler staple "$1"; exit 1
+}
+
 if [[ "${1:-}" == "--dmg" ]]; then
   DMG="build/PWE-MAC-MONITOR-$VERSION.dmg"
+  # The app gets its own ticket before it goes into the image. Stapling only the image left the
+  # installed app without one (2026-10-16: `stapler validate` on /Applications/PWE Monitor.app),
+  # so its first launch had to reach Apple to be recognised. Loan Bar and Lumen Bar already did this.
+  if [[ -n "$NOTARY_PROFILE" ]]; then
+    echo "▸ notarising the app (this takes a few minutes)"
+    ditto -c -k --keepParent "$APP" "$WORK/app.zip"
+    notarise "$WORK/app.zip"
+    rm -f "$WORK/app.zip"
+    staple "$APP"
+    rm -rf "build/$APP_NAME.app"
+    ditto --norsrc --noextattr --noacl "$APP" "build/$APP_NAME.app"
+  fi
   STAGE="$WORK/dmg"
   echo "▸ packaging $DMG"
   rm -rf "$STAGE" "$DMG"; mkdir -p "$STAGE"
@@ -126,9 +164,9 @@ if [[ "${1:-}" == "--dmg" ]]; then
     codesign --force --sign "$SIGN_IDENTITY" "$DMG"
   fi
   if [[ -n "$NOTARY_PROFILE" ]]; then
-    echo "▸ notarising (this takes a few minutes)"
-    xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait
-    xcrun stapler staple "$DMG"
+    echo "▸ notarising the disk image"
+    notarise "$DMG"
+    staple "$DMG"
     spctl -a -t open --context context:primary-signature -vv "$DMG" || true
     echo "✓ notarised and stapled — opens with no warning on any Mac"
   elif [[ -n "$SIGN_IDENTITY" ]]; then

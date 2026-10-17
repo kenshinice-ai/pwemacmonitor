@@ -156,7 +156,19 @@ MOUNT=$(hdiutil attach -nobrowse -readonly "$DMG" | awk -F'\t' '/\/Volumes\//{pr
 APP_IN_DMG=$(find "$MOUNT" -maxdepth 1 -name "*.app" | head -1)
 [[ -n "$APP_IN_DMG" ]] || { echo "✗ no .app inside the disk image"; exit 1; }
 spctl -a -vv "$APP_IN_DMG"
-xcrun stapler validate "$APP_IN_DMG" >/dev/null && echo "✓ ticket stapled to the app"
+xcrun stapler validate "$APP_IN_DMG" >/dev/null || {
+  echo "✗ the app inside the disk image carries no ticket — stopping before publishing"; exit 1; }
+echo "✓ ticket stapled to the app"
+
+echo
+echo "── ship-content check ────────────────────────────────────"
+# What is inside the app, which Gatekeeper does not ask: signer, hardened runtime, entitlements,
+# what it links, and no local path or staging address in its strings. Shared with the other PWE
+# apps (07 TOOLS/ship-check.sh); this app registers no allowed strings and no entitlements.
+[[ -x ../ship-check.sh ]] || { echo "✗ ../ship-check.sh not found — it gates the release"; exit 1; }
+SHIP=$(../ship-check.sh "$APP_IN_DMG" --source Sources) || { echo "$SHIP"; echo "✗ stopping before publishing"; exit 1; }
+echo "$SHIP"
+SHIP_SUMMARY=$(grep -E '^(ship-check |  (signing|linking|strings):)' <<<"$SHIP")
 hdiutil detach "$MOUNT" -quiet
 MOUNT=""
 
@@ -170,11 +182,13 @@ git push -q origin main
 git push -q origin "v$VERSION"
 echo "✓ tagged v$VERSION"
 
+# The ship-check summary goes first in the notes: the record of what this binary is.
+SHIP_NOTES=$'**Ship-content check**\n```\n'"$SHIP_SUMMARY"$'\n```'
 gh release create "v$VERSION" "$DMG" build/SHA256SUMS.txt \
-  --repo "$REPO" --title "PWE Monitor $VERSION" --generate-notes \
+  --repo "$REPO" --title "PWE Monitor $VERSION" --notes "$SHIP_NOTES" --generate-notes \
   --notes-start-tag "$(git describe --tags --abbrev=0 "v$VERSION^" 2>/dev/null || echo "v$VERSION")" \
   || gh release create "v$VERSION" "$DMG" build/SHA256SUMS.txt \
-       --repo "$REPO" --title "PWE Monitor $VERSION" --generate-notes
+       --repo "$REPO" --title "PWE Monitor $VERSION" --notes "$SHIP_NOTES" --generate-notes
 echo "✓ release published"
 
 TAP_DIR=$(mktemp -d)
