@@ -18,6 +18,11 @@ enum UpdateCheckSelfTest {
             if !condition { failures.append(what) }
         }
 
+        func newer(_ outcome: UpdateCheck.Outcome) -> String? {
+            if case .newer(let release) = outcome { return release.version }
+            return nil
+        }
+
         print("update check")
 
         let payload = UpdateCheck.payload(version: "1.3.0")
@@ -54,6 +59,33 @@ enum UpdateCheckSelfTest {
             clock += 60 * 60
             await updates.checkIfDue(enabled: true)
             expect(attempts == 2, "a failed check is retried rather than parked for a day")
+            expect(await updates.check(manual: true) == .unreachable, "no answer is unreachable, not current")
+
+            // What a manual check reports. "Later" quiets the daily reminder; it must not make
+            // "Check for Updates…" say the reader has the newest version when they do not.
+            var answer = #"{"version":"1.4.0","published":"2026-10-01","download":"https://pwestudio.site/macmonitor"}"#
+            let ok = HTTPURLResponse(url: URL(string: "https://pwestudio.site/app/check")!,
+                                     statusCode: 200, httpVersion: nil, headerFields: nil)!
+            let answering = UpdateCheck(defaults: defaults, now: { clock },
+                                        fetch: { _ in (Data(answer.utf8), ok) })
+            _ = await answering.check(version: "1.3.0")
+            answering.dismiss()
+            let daily = await answering.check(version: "1.3.0")
+            expect(newer(daily) == "1.4.0" && answering.available == nil,
+                   "the daily check respects Later and still knows 1.4.0 exists")
+            let asked = await answering.check(version: "1.3.0", manual: true)
+            expect(newer(asked) == "1.4.0" && answering.available?.version == "1.4.0",
+                   "a manual check shows 1.4.0 even after Later")
+
+            answer = #"{"version":"1.3.0","published":"2026-09-01","download":"https://pwestudio.site/macmonitor"}"#
+            expect(await answering.check(version: "1.3.0", manual: true) == .current,
+                   "an announced release equal to this build is current")
+
+            // check.js answers a product it does not know with the caller's version and nothing
+            // else. That is no information, not "up to date".
+            answer = #"{"version":"1.3.0"}"#
+            expect(await answering.check(version: "1.3.0", manual: true) == .unknown,
+                   "an echo with no release fields is unknown, not current")
             group.leave()
         }
         while group.wait(timeout: .now()) == .timedOut {

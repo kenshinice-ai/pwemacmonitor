@@ -362,32 +362,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
 
     /// The manual check. Always says something — an answer that arrives silently is
-    /// indistinguishable from a menu item that does nothing.
+    /// indistinguishable from a menu item that does nothing. A version once put off with "Later"
+    /// is still the newest version, so asking shows it.
     @objc private func checkForUpdates() {
         if let release = updater.available { return present(release) }
         Task { @MainActor in
-            let answered = await updater.check()
+            let outcome = await updater.check(manual: true)
             NSApp.activate(ignoringOtherApps: true)
-            if let release = updater.available { return present(release) }
             let alert = NSAlert()
             alert.alertStyle = .informational
-            if answered {
+            switch outcome {
+            case .newer(let release):
+                return present(release)
+            case .current:
                 alert.messageText = L("update.current", "PWE Monitor is up to date.")
                 alert.informativeText = String(format: L("update.currentVersion", "Version %@"),
                                                UpdateCheck.currentVersion)
-            } else {
-                alert.messageText = L("update.unreachable", "Could not reach pwestudio.site.")
-                // One line: loccheck scans for `L("key", "English")` within a line, so a call
-                // wrapped across two is a key it never sees and therefore never gates.
-                alert.informativeText = L("update.tryAgain", "Check your connection and try again, or open the download page.")
+                alert.runModal()
+            case .unknown, .unreachable:
+                // The site answered without naming a release, or did not answer: either way this
+                // copy cannot say it is current, so it says what it knows and offers the page.
+                // One line each: loccheck scans for `L("key", "English")` within a line, so a
+                // call wrapped across two is a key it never sees and therefore never gates.
+                if outcome == .unknown {
+                    alert.messageText = L("update.unknown", "pwestudio.site did not say which version is newest.")
+                    alert.informativeText = L("update.seePage", "The download page shows the newest version.")
+                } else {
+                    alert.messageText = L("update.unreachable", "Could not reach pwestudio.site.")
+                    alert.informativeText = L("update.tryAgain", "Check your connection and try again, or open the download page.")
+                }
                 alert.addButton(withTitle: L("update.openPage", "Open Download Page"))
                 alert.addButton(withTitle: L("update.ok", "OK"))
                 if alert.runModal() == .alertFirstButtonReturn {
                     NSWorkspace.shared.open(UpdateCheck.downloadPage)
                 }
-                return
             }
-            alert.runModal()
         }
     }
 

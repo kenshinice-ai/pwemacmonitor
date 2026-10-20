@@ -136,7 +136,9 @@
 "update.ok" = "好";
 "update.openPage" = "打开下载页";
 "update.ready" = "%@ 版已发布。";
+"update.seePage" = "下载页上写着最新版本。";
 "update.tryAgain" = "检查一下网络再试一次,或者直接打开下载页。";
+"update.unknown" = "pwestudio.site 没有说明哪个是最新版本。";
 "update.unreachable" = "连不上 pwestudio.site。";
 "update.youHave" = "你现在用的是 %@。";
 "value.charging" = "充电中";

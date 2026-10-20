@@ -131,7 +131,9 @@
 "update.ok" = "OK";
 "update.openPage" = "Open Download Page";
 "update.ready" = "Version %@ is out.";
+"update.seePage" = "The download page shows the newest version.";
 "update.tryAgain" = "Check your connection and try again, or open the download page.";
+"update.unknown" = "pwestudio.site did not say which version is newest.";
 "update.unreachable" = "Could not reach pwestudio.site.";
 "update.youHave" = "You have %@.";
 "value.charging" = "charging";
