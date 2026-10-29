@@ -155,7 +155,9 @@ final class Monitor: ObservableObject {
         language = lang
         Loc.language = lang
         sampler = Sampler()
-        soc = sampler?.soc
+        var info = sampler?.soc
+        if let fake = Monitor.fakeTiers { info?.tiers = fake }
+        soc = info
         hardware = Monitor.hardwareOverride() ?? sampler?.hardware ?? .laptop
         if sampler == nil { error = .noAppleSilicon }
         restart()
@@ -213,6 +215,37 @@ final class Monitor: ObservableObject {
         timer = t
     }
 
+    /// `PWEMON_TIERS=m6` draws this Mac's cores as an M6's three tiers — six Efficiency, four
+    /// Performance, two Super — to check the silicon card on a chip nobody here has. The readings
+    /// are this Mac's, regrouped; nothing is sampled differently. Like `PWEMON_HARDWARE`, for
+    /// screenshots and layout checks only.
+    nonisolated static let fakeTiers: [CPUTier]? = ProcessInfo.processInfo.environment["PWEMON_TIERS"] == "m6"
+        ? [CPUTier(label: "E", cores: 6, freqs: []), CPUTier(label: "P", cores: 4, freqs: []), CPUTier(label: "S", cores: 2, freqs: [])]
+        : nil
+
+    nonisolated static func regroup(_ s: Snapshot, into tiers: [CPUTier]) -> Snapshot {
+        var s = s
+        var placed: [CoreMetric] = [], next = 0
+        for (t, tier) in tiers.enumerated() {
+            for _ in 0..<tier.cores where next < s.cores.count {
+                var c = s.cores[next]; next += 1
+                c.tier = t
+                placed.append(CoreMetric(id: c.id, tier: t, isP: t == tiers.count - 1, die: c.die, index: placed.filter { $0.tier == t }.count,
+                                         freqMHz: c.freqMHz, scaled: c.scaled, active: c.active))
+            }
+        }
+        s.cores = placed
+        s.tierUsage = tiers.indices.map { t in
+            let mine = placed.filter { $0.tier == t }
+            return zeroDiv(mine.reduce(0) { $0 + $1.scaled }, Double(max(1, mine.count)))
+        }
+        s.tierFreq = tiers.indices.map { t in
+            let mine = placed.filter { $0.tier == t }
+            return Int(zeroDiv(mine.reduce(0) { $0 + Double($1.freqMHz) }, Double(max(1, mine.count))))
+        }
+        return s
+    }
+
     /// The process card's title was clicked: show the other order now, and keep it until macOS's
     /// memory pressure level next changes. The table is re-read on the sampling queue rather than
     /// re-sorted here, because the eight busiest processes are not the eight largest.
@@ -239,6 +272,7 @@ final class Monitor: ObservableObject {
         // A sample the old timer had already started when the interval changed. Its point belongs
         // to curves that have just been cleared.
         guard s.interval == interval else { return }
+        let s = Monitor.fakeTiers.map { Monitor.regroup(s, into: $0) } ?? s
         if let level = choiceLevel, level != s.memory.level { choiceLevel = nil; requestedOrder.value = nil }
         snap = s
         applyDemo()

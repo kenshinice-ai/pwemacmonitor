@@ -229,6 +229,9 @@ struct PressureClock {
 
 struct CoreMetric: Identifiable {
     let id: String          // IOReport channel name
+    /// Index into `SocInfo.tiers`, slowest first. `isP` is the fastest tier, the name it had
+    /// before there could be a third.
+    var tier = 0
     let isP: Bool
     var die: Int = 0, index: Int = 0
     var freqMHz: Int, scaled: Double, active: Double
@@ -256,6 +259,8 @@ struct Snapshot {
     // CPU
     var cpuUsage = 0.0, cpuActive = 0.0          // 0–1 (frequency-scaled, and raw active)
     var ecpuFreq = 0, pcpuFreq = 0, ecpuUsage = 0.0, pcpuUsage = 0.0
+    /// Per tier, in `SocInfo.tiers` order (1.8.0). `ecpu*` is the first and `pcpu*` the last.
+    var tierUsage: [Double] = [], tierFreq: [Int] = []
     var cores: [CoreMetric] = []
     var loadAvg: (Double, Double, Double) = (0, 0, 0)
     // GPU
@@ -701,9 +706,20 @@ final class Sampler {
         return "IOReport:\(ioreport != nil ? "on" : "off") SMC:\(smcPart) IOHID:\(hid != nil ? "on(\(hotHIDNames.count) hot)" : "off")"
     }
 
-    private func calcFreq(_ items: [(String, Int64)], freqs: [UInt32]) -> (Int, Double, Double) {
-        guard !freqs.isEmpty, items.count > freqs.count,
-              let offset = items.firstIndex(where: { !["IDLE", "DOWN", "OFF"].contains($0.0) }) else { return (0, 0, 0) }
+    /// (average MHz, frequency-scaled usage, active share) from a cluster's residency states.
+    ///
+    /// Without a DVFS table that fits — a chip that publishes none where this looks, or a tier
+    /// whose table is a guess (M6's Performance cores, 1.8.0) — the frequency is unknown and
+    /// returned as 0, but how much of the interval the core was busy is still in the residencies,
+    /// and that is returned as both usage and active. Until 1.8.0 this case returned all zeros,
+    /// and a busy core drew an empty bar.
+    static func calcFreq(_ items: [(String, Int64)], freqs: [UInt32]) -> (Int, Double, Double) {
+        guard let offset = items.firstIndex(where: { !["IDLE", "DOWN", "OFF"].contains($0.0) }) else { return (0, 0, 0) }
+        guard !freqs.isEmpty, items.count > freqs.count else {
+            let busy = items.dropFirst(offset).reduce(0.0) { $0 + Double($1.1) }
+            let a = zeroDiv(busy, items.reduce(0.0) { $0 + Double($1.1) })
+            return (0, a, a)
+        }
         let usage = items.dropFirst(offset).prefix(freqs.count).reduce(0.0) { $0 + Double($1.1) }
         let total = items.reduce(0.0) { $0 + Double($1.1) }
         var avg = 0.0
@@ -739,13 +755,13 @@ final class Sampler {
             for ch in sample.channels {
                 switch (ch.group, ch.subgroup) {
                 case ("CPU Stats", "CPU Core Performance States"):
-                    let isP = ch.name.contains("PCPU")
-                    guard isP || ch.name.contains("ECPU") || ch.name.contains("MCPU") else { continue }
-                    let (f, sc, ac) = calcFreq(ioreport.residencies(ch.item), freqs: isP ? soc.pcpuFreqs : soc.ecpuFreqs)
+                    guard let tier = Self.tierIndex(channel: ch.name, tiers: soc.tiers.count) else { continue }
+                    let (f, sc, ac) = Self.calcFreq(ioreport.residencies(ch.item), freqs: soc.tiers[tier].freqs)
                     let key = Self.coreSortKey(ch.name)
-                    cores.append(CoreMetric(id: ch.name, isP: isP, die: key.0, index: key.3, freqMHz: f, scaled: sc, active: ac))
+                    cores.append(CoreMetric(id: ch.name, tier: tier, isP: tier == soc.tiers.count - 1,
+                                            die: key.0, index: key.3, freqMHz: f, scaled: sc, active: ac))
                 case ("GPU Stats", "GPU Performance States") where ch.name == "GPUPH":
-                    let (f, sc, ac) = calcFreq(ioreport.residencies(ch.item), freqs: Array(soc.gpuFreqs.dropFirst()))
+                    let (f, sc, ac) = Self.calcFreq(ioreport.residencies(ch.item), freqs: Array(soc.gpuFreqs.dropFirst()))
                     s.gpuFreq = f; s.gpuUsage = sc; s.gpuActive = ac
                 case ("Energy Model", _):
                     let w = ioreport.watts(ch, elapsed: sample.elapsed)
@@ -831,14 +847,22 @@ final class Sampler {
             }
             cores.sort { Self.coreSortKey($0.id) < Self.coreSortKey($1.id) }
             s.cores = cores
-            let e = cores.filter { !$0.isP }, p = cores.filter { $0.isP }
-            let eCount = Double(max(e.count, soc.ecpuCores)), pCount = Double(max(p.count, soc.pcpuCores))
-            s.ecpuUsage = zeroDiv(e.reduce(0) { $0 + $1.scaled }, eCount)
-            s.pcpuUsage = zeroDiv(p.reduce(0) { $0 + $1.scaled }, pCount)
-            s.cpuUsage = zeroDiv(cores.reduce(0) { $0 + $1.scaled }, eCount + pCount)
-            s.cpuActive = zeroDiv(cores.reduce(0) { $0 + $1.active }, eCount + pCount)
-            s.ecpuFreq = max(Int(zeroDiv(e.reduce(0) { $0 + Double($1.freqMHz) }, Double(e.count))), Int(soc.ecpuFreqs.first ?? 0))
-            s.pcpuFreq = max(Int(zeroDiv(p.reduce(0) { $0 + Double($1.freqMHz) }, Double(p.count))), Int(soc.pcpuFreqs.first ?? 0))
+            let n = soc.tiers.count
+            var usage = [Double](repeating: 0, count: n), freq = [Int](repeating: 0, count: n), seats = 0.0
+            for t in 0..<n {
+                let mine = cores.filter { $0.tier == t }
+                // A parked cluster reports no channel at all: the system's count stands in.
+                let count = Double(max(mine.count, soc.tiers[t].cores))
+                seats += count
+                usage[t] = zeroDiv(mine.reduce(0) { $0 + $1.scaled }, count)
+                freq[t] = max(Int(zeroDiv(mine.reduce(0) { $0 + Double($1.freqMHz) }, Double(mine.count))),
+                              Int(soc.tiers[t].freqs.first ?? 0))
+            }
+            s.tierUsage = usage; s.tierFreq = freq
+            s.ecpuUsage = n > 1 ? usage[0] : 0; s.pcpuUsage = usage.last ?? 0
+            s.ecpuFreq = n > 1 ? freq[0] : 0; s.pcpuFreq = freq.last ?? 0
+            s.cpuUsage = zeroDiv(cores.reduce(0) { $0 + $1.scaled }, seats)
+            s.cpuActive = zeroDiv(cores.reduce(0) { $0 + $1.active }, seats)
         }
 
         if ioreport == nil { primed = true }        // nothing to wait for: say what the other sources say
@@ -1110,6 +1134,19 @@ final class Sampler {
             weighted += r * (lower + upper) / 2; ticks += r; lower = upper
         }
         return (weighted, ticks)
+    }
+
+    /// Which tier a "CPU Core Performance States" channel belongs to, slowest first. `PCPU` is the
+    /// fastest kind and `ECPU` the slowest on every chip so far; `MCPU` is the middle tier of a
+    /// three-level chip (M6) and the slower of two on M5 Pro and Max, which have no efficiency
+    /// cores. A prefix not listed here is left out rather than guessed into a tier;
+    /// `pwemon --channels` lists every channel name, so a new one is seen at once.
+    static func tierIndex(channel: String, tiers: Int) -> Int? {
+        guard tiers > 0 else { return nil }
+        if channel.contains("PCPU") { return tiers - 1 }
+        if channel.contains("MCPU") { return tiers >= 3 ? tiers - 2 : 0 }
+        if channel.contains("ECPU") { return 0 }
+        return nil
     }
 
     private static func coreSortKey(_ ch: String) -> (Int, Int, Int, Int) {

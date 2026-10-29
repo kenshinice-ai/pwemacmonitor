@@ -28,7 +28,7 @@
 
 | 数据源 | 指标 |
 |---|---|
-| **IOReport** | 两个 CPU 簇的逐核频率与占用 · GPU 频率与占用 · CPU / GPU / 神经网络引擎 / DRAM 功耗 |
+| **IOReport** | 每一种 CPU 核心的逐核频率与占用(M1 到 M5 两种,M6 三种)· GPU 频率与占用 · CPU / GPU / 神经网络引擎 / DRAM 功耗 |
 | **SMC** | CPU 与 GPU 裸片温度 · 风扇转速与上限 · 整机功耗 |
 | **IOHID** | 固态硬盘(NAND)温度 · 电池温度 · 全部 PMU 裸片传感器,约 200 个 |
 | **Mach / sysctl / IOKit** | 内存(应用、联动、已压缩、交换及其读写速率、macOS 自己给的压力级别和它持续了多久)· 硬盘容量与吞吐 · 网络吞吐与地址 · 负载 · 电池电量、充放电、循环次数与健康度 · 进程占用（平时按 CPU 排，macOS 报内存压力时按内存排；点卡片标题可换成另一种排序） |
@@ -41,7 +41,7 @@
   神经网络引擎改读 CLPC 驱动自己的计数器,DRAM 则不显示,而不是显示成 0。没有这组直方图的芯片
   (M3、M5 Max)上,CPU 这一路也读 CLPC,前提是 GPU 的两个计数器先对得上。每一路都在 M4 Max 上和
   苹果的 `powermetrics` 对照过;M3 和 M5 Max 这条路还没有。[具体做法与对照结果](docs/power-rails.md)(英文)。
-- **逐核驻留率。** 每一根柱子是一个物理核心,按频率加权,能效核簇与性能核簇分开显示。
+- **逐核驻留率。** 每一根柱子是一个物理核心,按频率加权,不同种类的核心分组显示(M6 分三组)。
   悬停可看该核的确切频率。平均负载就写在这排柱子下面 —— 它说的正是有多少线程在用、在等这些核心。
 
 网络卡片画出与上方曲线同一时间窗里的流量,下面是构成它的上行、下行两个数字。只统计这台 Mac
@@ -178,7 +178,7 @@ Intel 硬件上不存在这些计数器。
 ```bash
 "/Applications/PWE Monitor.app/Contents/MacOS/pwemon" --probe        # 人类可读的一次读数
 "/Applications/PWE Monitor.app/Contents/MacOS/pwemon" --json --loop  # 每行一个 JSON,持续输出
-"/Applications/PWE Monitor.app/Contents/MacOS/pwemon" --channels     # 这颗芯片的功耗计数器叫什么;某条电源轨缺失时报障用
+"/Applications/PWE Monitor.app/Contents/MacOS/pwemon" --channels     # 这颗芯片的核心、频率表和功耗计数器叫什么;读数缺失时报障用
 ```
 
 这两个输出是机器接口,固定为英文。

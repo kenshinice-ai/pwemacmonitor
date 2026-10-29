@@ -496,6 +496,16 @@ enum CLI {
         func line(_ title: String, _ list: [String]) {
             print("\(title)  \(list.isEmpty ? "—" : list.joined(separator: ", "))")
         }
+        // The chip's own description, and the core channels it publishes: what a new chip needs
+        // checked first (M6 moved its frequency tables and added a third kind of core).
+        for d in SocInfo.diagnostics() { print(d) }
+        if let s = soc {
+            print("Tiers         \(s.tiers.map { "\($0.label)\($0.cores) (\($0.freqs.isEmpty ? "no table" : "\($0.freqs.count) states"))" }.joined(separator: ", "))")
+        }
+        let coreNames = all.filter { $0.group == "CPU Stats" && $0.subgroup == "CPU Core Performance States" }.map(\.name)
+        let unplaced = coreNames.filter { Sampler.tierIndex(channel: $0, tiers: soc?.tiers.count ?? 0) == nil }
+        line("Core channels", coreNames)
+        line("Not placed   ", unplaced)
         line("PMP / Energy ", names("PMP", "Energy"))
         line("Energy Model ", names("Energy Model"))
         let subgroups = Dictionary(grouping: all.filter { $0.group == "PMP" }, by: \.subgroup).map { "\($0.key.isEmpty ? "(none)" : $0.key) ×\($0.value.count)" }.sorted()
@@ -536,8 +546,8 @@ enum CLI {
 
     static func summary(_ s: Snapshot, soc: SocInfo) -> String {
         """
-        \(soc.chipName) · \(soc.memoryGB) GB · \(soc.ecpuLabel)\(soc.ecpuCores)+\(soc.pcpuLabel)\(soc.pcpuCores) · GPU \(soc.gpuCores)
-        CPU   \(Fmt.pct(s.cpuUsage))  \(soc.ecpuLabel) \(s.ecpuFreq) MHz  \(soc.pcpuLabel) \(s.pcpuFreq) MHz  temp avg \(Fmt.temp1(s.cpuTemp)) max \(Fmt.temp1(s.cpuTempMax))
+        \(soc.chipName) · \(soc.memoryGB) GB · \(soc.tiers.map { "\($0.label)\($0.cores)" }.joined(separator: "+")) · GPU \(soc.gpuCores)
+        CPU   \(Fmt.pct(s.cpuUsage))  \(zip(soc.tiers, s.tierFreq).map { "\($0.label) \($1 > 0 ? "\($1) MHz" : "—")" }.joined(separator: "  "))  temp avg \(Fmt.temp1(s.cpuTemp)) max \(Fmt.temp1(s.cpuTempMax))
         GPU   \(Fmt.pct(s.gpuUsage))  \(s.gpuFreq) MHz  temp \(Fmt.temp1(s.gpuTemp))
         Power sys \(Fmt.watts(s.sysPower))\(s.sysPowerMeasured ? "" : " (rails only)")  cpu \(s.cpuPowerReadable ? Fmt.watts(s.cpuPower) : "—") [\(s.cpuPowerSource.rawValue)]  gpu \(Fmt.watts(s.gpuPower))  ane \(s.aneReadable ? Fmt.watts(s.anePower) : "—") [\(s.aneSource)]  ram \(s.ramReadable ? Fmt.watts(s.ramPower) : "—")
         CLPC  cpu \(s.clpcCPU.map(Fmt.watts) ?? "—")  gpu \(s.clpcGPU.map(Fmt.watts) ?? "—")  ane \(s.clpcANE.map(Fmt.watts) ?? "—")  witness: \(s.witness)
@@ -554,7 +564,12 @@ enum CLI {
         let obj: [String: Any] = [
             "time": ISO8601DateFormatter().string(from: s.time), "chip": soc.chipName,
             "cpu": ["usage": s.cpuUsage, "active": s.cpuActive, "ecpu_mhz": s.ecpuFreq, "pcpu_mhz": s.pcpuFreq, "temp_avg": s.cpuTemp, "temp_max": s.cpuTempMax, "power_w": s.cpuPower,
-                    "cores": s.cores.map { ["id": $0.id, "p": $0.isP, "mhz": $0.freqMHz, "usage": $0.scaled] }],
+                    "cores": s.cores.map { ["id": $0.id, "p": $0.isP, "tier": $0.tier, "mhz": $0.freqMHz, "usage": $0.scaled] },
+                    // 1.8.0, additive: one entry per kind of core, slowest first — three on M6.
+                    // `ecpu_mhz` and `pcpu_mhz` stay, as the first and the last of these.
+                    "tiers": soc.tiers.enumerated().map { i, t in
+                        ["label": t.label, "cores": t.cores,
+                         "mhz": i < s.tierFreq.count ? s.tierFreq[i] : 0, "usage": i < s.tierUsage.count ? s.tierUsage[i] : 0] }],
             "gpu": ["usage": s.gpuUsage, "mhz": s.gpuFreq, "temp": s.gpuTemp, "power_w": s.gpuPower],
             // `rails_readable`: all four rails are measured this sample. `cpu_source` says where
             // cpu.power_w came from — the Energy Model counter, the PMP cluster histograms that

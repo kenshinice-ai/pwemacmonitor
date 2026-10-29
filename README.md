@@ -30,7 +30,7 @@ Everything on one page, refreshed every 1–5 seconds.
 
 | Source | Metrics |
 |---|---|
-| **IOReport** | Per-core frequency and usage for both CPU clusters · GPU frequency and usage · CPU / GPU / Neural Engine / DRAM power |
+| **IOReport** | Per-core frequency and usage for every kind of CPU core — two on M1 to M5, three on M6 · GPU frequency and usage · CPU / GPU / Neural Engine / DRAM power |
 | **SMC** | CPU and GPU die temperatures · fan RPM and maximum · whole-system power draw |
 | **IOHID** | SSD (NAND) temperature · battery temperature · every PMU die sensor — around 200 in total |
 | **Mach / sysctl / IOKit** | Memory (app, wired, compressed, swap and its read/write rate, macOS's own pressure level and how long it has held) · SSD capacity and throughput · network throughput and address · load average · battery percentage, power flow, cycles and health · top processes (by CPU, or by memory while macOS reports pressure — click the card's title for the other order) |
@@ -46,8 +46,9 @@ Two of these are worth calling out, because most menu-bar monitors do not have t
   from CLPC as well, once the GPU's two counters have been seen to agree. Each was checked against
   Apple's `powermetrics` on an M4 Max; the M3 and M5 Max route has not been.
   [How, and what the comparison found](docs/power-rails.md).
-- **Per-core residency.** Each bar is one physical core, frequency-weighted, with the efficiency and
-  performance clusters distinguished. Hover a bar for its exact frequency. The load average sits
+- **Per-core residency.** Each bar is one physical core, frequency-weighted, grouped by kind of core
+  as the system reports them — efficiency and performance up to M4, performance and super on M5,
+  all three on M6. Hover a bar for its exact frequency. The load average sits
   under the bars it describes — how many threads are running or waiting for one of those cores.
 
 The network card draws traffic over the same window as the sparklines above it, with the two
@@ -310,8 +311,9 @@ Add `--loop` to keep going, or ask for a fixed record:
 pwemon --json --samples 60 --interval 2     # two minutes of this Mac, one object a line
 ```
 
-If a rail is missing on your Mac, this says what the chip calls its power counters — the first
-thing a bug report about it needs:
+If a reading is missing on your Mac, this says what the chip calls its cores, its frequency tables
+and its power counters — the first thing a bug report about it needs, and how a new chip is fitted
+without having one here:
 
 ```bash
 pwemon --channels

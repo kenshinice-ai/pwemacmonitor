@@ -264,6 +264,44 @@ require(stateOnly.channels(chipClass: "Max").first { $0.channel == .cpu }?.readi
 var unseen = PressureClock(); unseen.update(.warning, now: 5); unseen.update(.normal, now: 65)
 require(unseen.lastSeconds == 60 && !unseen.lastStartKnown, "a spell whose start was not seen is remembered as a floor")
 
+// ── chips with three kinds of core, and tables that moved (1.8.0) ──
+// M6: 2 Super + 4 Performance + 6 Efficiency, and its DVFS tables in `pmgr-child` (macmon #79,
+// Mac18,5 on macOS 27.0). Until 1.8.0 Monitor would have refused to start on it.
+print("── CPU tiers ──")
+require(SocInfo.tierLabels(names: ["Super", "Performance", "Efficiency"].reversed(), legacy: false) == ["E", "P", "S"], "M6: three tiers named by the system, slowest first")
+require(SocInfo.tierLabels(names: [nil, nil, nil], legacy: false) == ["E", "P", "S"], "three unnamed levels default to E, P, S")
+require(SocInfo.tierLabels(names: ["Efficiency", "Performance"], legacy: true) == ["E", "P"], "M1 to M4 as they always were")
+require(SocInfo.tierLabels(names: ["Performance", "Super"], legacy: false) == ["P", "S"], "M5 Pro and Max: Performance and Super")
+require(SocInfo.tierLabels(names: ["Efficiency", "Super"], legacy: false) == ["E", "S"], "base M5: its Efficiency cores are E, not P (macmon 0.10 fixed the same)")
+require(SocInfo.tierLabels(names: [nil], legacy: false) == ["P"], "one level (a virtual machine)")
+// Channel → tier. M6 is the only chip so far with all three prefixes at once.
+let m6 = [("ECPU000", 0), ("ECPU050", 0), ("MCPU000", 1), ("MCPU030", 1), ("PCPU000", 2), ("PCPU010", 2)]
+for (ch, t) in m6 { require(Sampler.tierIndex(channel: ch, tiers: 3) == t, "M6: \(ch) is tier \(t)") }
+require(Sampler.tierIndex(channel: "ECPU000", tiers: 2) == 0 && Sampler.tierIndex(channel: "PCPU150", tiers: 2) == 1, "M4 Max: E and P, as before")
+require(Sampler.tierIndex(channel: "MCPU000", tiers: 2) == 0 && Sampler.tierIndex(channel: "PCPU000", tiers: 2) == 1, "M5 Max: MCPU is the slower of two")
+require(Sampler.tierIndex(channel: "DIE_1_PCPU020", tiers: 2) == 1, "an Ultra's second die keeps its tier")
+require(Sampler.tierIndex(channel: "XCPU000", tiers: 3) == nil, "a prefix nobody has seen is left out, not guessed")
+require(Sampler.tierIndex(channel: "PCPU000", tiers: 0) == nil, "no tiers, no placement")
+// Which table each tier reads: the slowest the efficiency table, the rest the performance one.
+require(SocInfo.freqTableIndex(tier: 0, of: 3) == 0 && SocInfo.freqTableIndex(tier: 1, of: 3) == 1 && SocInfo.freqTableIndex(tier: 2, of: 3) == 1,
+        "M6: Efficiency reads voltage-states1, Performance and Super share voltage-states5 (macmon's inference)")
+require(SocInfo.freqTableIndex(tier: 0, of: 2) == 0 && SocInfo.freqTableIndex(tier: 1, of: 2) == 1, "two tiers as before")
+require(SocInfo.freqTableIndex(tier: 0, of: 1) == 1, "one level reads the performance table")
+// pmgr and pmgr-child: the first node with a key keeps it, so a stub cannot blank the real table.
+func dvfs(_ khz: [UInt32]) -> Data { var d = Data(); for f in khz { withUnsafeBytes(of: f) { d.append(contentsOf: $0) }; withUnsafeBytes(of: UInt32(800)) { d.append(contentsOf: $0) } }; return d }
+let eTable = dvfs([972_000, 1_400_000, 1_800_000, 2_200_000, 2_500_000, 2_800_000, 2_940_000])
+let merged = SocInfo.mergedProperties([["compatible": "pmgr2,t8152"], ["voltage-states1-sram": eTable, "compatible": "child"]])
+require((merged["voltage-states1-sram"] as? Data) == eTable && (merged["compatible"] as? String) == "pmgr2,t8152",
+        "the child's tables come through; the stub's own keys are not overwritten")
+require(SocInfo.dvfsMHz(eTable) == [972, 1400, 1800, 2200, 2500, 2800, 2940], "M6 stores kHz: 972–2940 MHz, as macmon measured")
+// No table that fits: usage from residency, frequency unknown — not an empty bar.
+let res: [(String, Int64)] = [("IDLE", 600), ("V0", 100), ("V1", 300)]
+let (fNo, scNo, acNo) = Sampler.calcFreq(res, freqs: [])
+require(fNo == 0 && abs(scNo - 0.4) < 1e-9 && abs(acNo - 0.4) < 1e-9, "without a table a core 40 % busy still reads 40 %, at no stated frequency")
+let (fYes, _, acYes) = Sampler.calcFreq(res, freqs: [1000, 2000])
+require(fYes == 1750 && abs(acYes - 0.4) < 1e-9, "with a table, the same residencies as before")
+require(Sampler.calcFreq([("IDLE", 10)], freqs: []).1 == 0, "an idle core is idle either way")
+
 // ── the CLPC witness (1.7.0) ──
 // The pairs measured 2026-10-12, which must agree; and counters that are not the CPU's, which must not.
 print("── CLPC witness ──")

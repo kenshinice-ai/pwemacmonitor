@@ -407,8 +407,10 @@ struct DashboardView: View {
     // MARK: Silicon — per-core activity and where the watts are actually going
     private var silicon: some View {
         let soc = monitor.soc
-        let e = soc?.ecpuLabel ?? "E", p = soc?.pcpuLabel ?? "P"
-        return Card(dark: dark, title: "\(soc?.chipName.uppercased() ?? "APPLE SILICON") · \(e)\(soc?.ecpuCores ?? 0) + \(p)\(soc?.pcpuCores ?? 0) · GPU \(soc?.gpuCores ?? 0)") {
+        // One group per kind of core, slowest first: two on M1 to M5, three on M6 (1.8.0).
+        let tiers = soc?.tiers ?? []
+        func label(_ t: Int) -> String { t < tiers.count ? tiers[t].label : "" }
+        return Card(dark: dark, title: "\(soc?.chipName.uppercased() ?? "APPLE SILICON") · \(soc?.tierSummary ?? "") · GPU \(soc?.gpuCores ?? 0)") {
             VStack(spacing: Theme.s2) {
                 HStack(alignment: .bottom, spacing: 3) {
                     if s.cores.isEmpty {
@@ -422,19 +424,27 @@ struct DashboardView: View {
                             // nothing on screen dividing the two clusters. Space rather than a
                             // rule: Theme.stroke is white at 7 % on the dark card, 1.22:1, and a
                             // hairline there is not a boundary anyone can see.
-                            if i > 0, s.cores[i - 1].isP != c.isP {
+                            if i > 0, s.cores[i - 1].tier != c.tier {
                                 Color.clear.frame(width: 6, height: 28)
                             }
                             CoreBar(ratio: c.scaled, color: coreColor(c), dark: dark)
                                 .help(String(format: L("help.core", "%1$@ core %2$@ · %3$@ · %4$@"),
-                                             c.isP ? p : e, c.core_label, Fmt.ghz(c.freqMHz), Fmt.pct(c.scaled)))
+                                             label(c.tier), c.core_label, Fmt.ghz(c.freqMHz), Fmt.pct(c.scaled)))
                         }
                     }
                 }
                 .frame(height: 30)
-                HStack(spacing: Theme.s3) {
-                    legend(e, Theme.series(1, dark), "\(Fmt.ghz(s.ecpuFreq))")
-                    legend(p, Theme.series(0, dark), "\(Fmt.ghz(s.pcpuFreq))")
+                HStack(spacing: tiers.count >= 3 ? Theme.s2 : Theme.s3) {
+                    // Three tiers and the load do not fit on one line at "x.xx GHz" each: the unit is
+                    // written once, after the last, and the gaps close up a step. Two tiers keep
+                    // their full figures. Nothing here wraps — a wrapped legend made the M6 panel
+                    // 11 pt taller than every other Mac's.
+                    ForEach(Array(tiers.enumerated()), id: \.offset) { t, tier in
+                        let mhz = t < s.tierFreq.count ? s.tierFreq[t] : 0
+                        let last = t == tiers.count - 1
+                        legend(tier.label, Theme.series(tierInk(t), dark),
+                               tiers.count < 3 || last || mhz == 0 ? Fmt.ghz(mhz) : String(format: "%.2f", Double(mhz) / 1000))
+                    }
                     Spacer(minLength: 0)
                     // The load average, under the cores it is about. No swatch: it is not a
                     // series in the chart above, it is the queue for it.
@@ -506,14 +516,19 @@ struct DashboardView: View {
     /// gap does the rest of the telling apart.
     private func coreColor(_ c: CoreMetric) -> Color {
         let carrying = busy(s.cpuLoadHealth) == .warm && c.scaled >= 0.85
-        return carrying ? Theme.health(.warm, dark: dark) : Theme.series(c.isP ? 0 : 1, dark)
+        return carrying ? Theme.health(.warm, dark: dark) : Theme.series(tierInk(c.tier), dark)
     }
+
+    /// The fastest tier takes the darkest ink and each slower one the next step, so two-tier
+    /// chips keep the two inks they always had and M6's middle tier sits between them.
+    private func tierInk(_ tier: Int) -> Int { max(0, (monitor.soc?.tiers.count ?? 2) - 1 - tier) }
 
     private func legend(_ title: String, _ color: Color, _ value: String) -> some View {
         HStack(spacing: 4) {
             RoundedRectangle(cornerRadius: 1).fill(color).frame(width: 6, height: 6)
             Text(title).font(Theme.ui(9, 600)).tracking(0.4).foregroundStyle(Theme.muted(dark))
             Text(value).font(Theme.number(9, 500)).foregroundStyle(Theme.ink(dark).opacity(0.75))
+                .lineLimit(1).fixedSize()
         }
     }
 
@@ -557,7 +572,7 @@ struct DashboardView: View {
         Health.grade(percentOfOneCore / (Double(coreCount) * 100), warm: 0.125, hot: 0.333)
     }
 
-    private var coreCount: Int { max(1, (monitor.soc?.ecpuCores ?? 0) + (monitor.soc?.pcpuCores ?? 0)) }
+    private var coreCount: Int { max(1, monitor.soc?.cpuCores ?? 0) }
 
     // MARK: All sensors
     @ViewBuilder private var sensors: some View {
