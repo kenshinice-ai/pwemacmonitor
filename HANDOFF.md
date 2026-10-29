@@ -43,6 +43,7 @@
 - 1.6.0（2026-10-10）：结论在 95 °C 附近来回跳的问题已加迟滞，回落到 92 °C 才放开；产品页「负载上来，外侧的羽毛先转琥珀」已改成按热量说。记录在 `docs/thermal-verdict.md`。
 - 1.6.0 修掉的端口泄漏、三处读数不准和实测占用，记录在 `docs/sampling.md`。发版脚本会先跑 `pwemon --portcheck`。
 - 1.6.0 于 2026-10-10 发布：GitHub release、cask、pwestudio.site 的安装包与更新端点都是 1.6.0，发布后的安装包回下核对过校验和与 Gatekeeper 结论。
+- 1.8.0 于 2026-10-29 发布：支持 M6 的三档核心，频率表也会去 `pmgr-child` 找（方案 38，照 macmon 的推断写，未在 M6 实机上验证）。第一个走完新发版流程的 Monitor 版本：app 本身带票据，成品检查摘要在 release 说明里。GitHub release、cask、站点安装包与更新端点都是 1.8.0，回下核对过校验和（`9d743a1d…d021c686`）与 Gatekeeper 结论；装上的副本 `stapler validate` 通过。
 - 发版流程 2026-10-18 起：`build.sh --dmg` 先公证、装订 app 本身，再做 DMG；`Tools/release.sh` 在打 tag 前要求 DMG 里的 app 带票据、`../ship-check.sh` 通过，并把检查摘要放进 release 说明。用 1.7.6 的代码实跑过一遍（未发布）。之前装上的副本没有票据，下次发版后才有。
 - 1.7.6 于 2026-10-16 发布：修 1.7.5 的进程卡片标题在面板打开时出现蓝色焦点框；CPU / GPU 过热时结论行报温度，不再报封顶的「86% to its limit」。GitHub release、cask、站点安装包与更新端点都是 1.7.6，回下核对过校验和（`85175879…3d6faa2`）与 Gatekeeper 结论。
 - 1.7.5 于 2026-10-14 发布：点进程卡片标题在 CPU / 内存排序间切换，选择保持到内存压力级别变化（Lee 要求）。GitHub release、cask、站点安装包与更新端点都是 1.7.5，回下核对过校验和（`566a029c…88bd6d6e`）与 Gatekeeper 结论。
