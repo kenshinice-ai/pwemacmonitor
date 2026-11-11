@@ -227,3 +227,25 @@ Check what else is busy before reading the numbers as a baseline.
   `.focusable(false)` and `.focusEffectDisabled()`. A new one starts from those, not from
   `.buttonStyle(.plain)` alone.
 
+## What 1.8.0 and 1.8.1 taught (2026-10-29 to 11-11)
+
+- **A guess per chip is also a guess per shape.** `PSTR` is the whole machine, so the Base row —
+  scaled from a laptop — told every idle iMac it was near its limit; its 24-inch screen was never in
+  the number. When a figure covers the whole machine, list the shapes it comes in (laptop, desktop
+  with no screen, all-in-one) before choosing one limit for them.
+- **Decide by capability, not by model name.** iMac identifiers went `iMac21,x` → `Mac15,x` →
+  `Mac16,x`, and the M6 one is not known here. "A built-in screen and no battery" needed no table
+  and was right on the first iMac it met (Lee's M3, 2026-11-11).
+- **When a screenshot contradicts the shipped code, ask which version is running.** A 37 W
+  reading in amber after 1.8.1 shipped came from a 1.8.0 process still in the menu bar. Asking
+  first costs one message; diagnosing the wrong build costs a release.
+- **Get the sensor list before explaining a temperature.** On the M3 iMac, 101 °C was first called
+  Apple's quiet fan policy, then 114 °C at 3 W of CPU looked like a misfiled sensor, and the ranked
+  list (README, "If a temperature looks wrong") showed twenty `Tp` keys cooling together — real
+  readings. Two turns of the explanation in one afternoon; the list would have settled it in one.
+  Ask for it first, and say "inferred" until it arrives.
+- **`Tp` is a convention, not a location.** Apple does not publish where its sensors sit. "CPU
+  max" is the hottest `Tp`/`Te`/`Ts` key, which on a chip with a busy GPU can read far above what
+  the CPU's own power would explain. It is still a real temperature on the die.
+- **A shop is a test lab.** Photos of two M6 iMacs in an Apple Store confirmed 1.8.0's three tiers,
+  frequencies and fan count, and found the iMac envelope bug, without owning an M6.

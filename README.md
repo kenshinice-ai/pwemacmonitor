@@ -319,6 +319,13 @@ without having one here:
 pwemon --channels
 ```
 
+If a temperature looks wrong, list the hottest sensors by name. Each line is one sensor, for
+example `94.4  SMC  Tp1x`; run it while the machine is under the load that puzzled you:
+
+```bash
+pwemon --json | python3 -c 'import json,sys; L=json.load(sys.stdin)["sensor_list"]; [print("%6.1f  %-4s %s" % (s["value"], s["source"], s["name"])) for s in sorted(L, key=lambda s: -s["value"])[:20]]'
+```
+
 A rail or a level that was not read is never a number you can mistake for a reading: `--probe`
 prints a dash, and in JSON `power.readable` says which rails were measured and
 `memory.pressure_level` is `null` when macOS did not answer. The older keys are unchanged —

@@ -181,6 +181,12 @@ Intel 硬件上不存在这些计数器。
 "/Applications/PWE Monitor.app/Contents/MacOS/pwemon" --channels     # 这颗芯片的核心、频率表和功耗计数器叫什么;读数缺失时报障用
 ```
 
+温度看着不对时，按名字列出最热的 20 个传感器（每行一个，例如 `94.4  SMC  Tp1x`），在让你起疑的负载还在跑时运行：
+
+```bash
+"/Applications/PWE Monitor.app/Contents/MacOS/pwemon" --json | python3 -c 'import json,sys; L=json.load(sys.stdin)["sensor_list"]; [print("%6.1f  %-4s %s" % (s["value"], s["source"], s["name"])) for s in sorted(L, key=lambda s: -s["value"])[:20]]'
+```
+
 这两个输出是机器接口,固定为英文。
 
 ## 从源码构建、内部实现与发布流程
