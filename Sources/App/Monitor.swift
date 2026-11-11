@@ -179,22 +179,25 @@ final class Monitor: ObservableObject {
         return hidden
     }
 
-    /// `PWEMON_HARDWARE=desktop` or `=fanless` renders another machine's layout on this one, for
+    /// `PWEMON_HARDWARE=desktop`, `=imac` or `=fanless` renders another machine's layout on this one, for
     /// the documentation screenshots and for checking a layout that no Mac at hand can produce.
     /// Only the card set changes; every reading is still this machine's.
     private static func hardwareOverride() -> Hardware? {
         switch ProcessInfo.processInfo.environment["PWEMON_HARDWARE"] {
         case "desktop": return Hardware(hasBattery: false, hasFans: true)
+        case "imac":    return Hardware(hasBattery: false, hasFans: true, hasBuiltInScreen: true)
         case "fanless": return Hardware(hasBattery: true, hasFans: false)
         case "laptop":  return .laptop
         default: return nil
         }
     }
 
-    var overall: Health { snap.overall(chipClass: soc?.chipClass ?? "Base") }
+    /// What the system power figure is graded against. See `Hardware.powerClass`.
+    var powerClass: String { hardware.powerClass(soc?.chipClass ?? "Base") }
+    var overall: Health { snap.overall(powerClass: powerClass) }
     /// The five wing channels. Everything that shows a band reads from here.
-    var channels: [ChannelHealth] { snap.channels(chipClass: soc?.chipClass ?? "Base") }
-    var powerHealth: Health { snap.powerHealth(chipClass: soc?.chipClass ?? "Base") }
+    var channels: [ChannelHealth] { snap.channels(powerClass: powerClass) }
+    var powerHealth: Health { snap.powerHealth(powerClass: powerClass) }
 
     func restart() {
         timer?.cancel()

@@ -348,3 +348,13 @@ right on an M3 and an M5 Max. What made it take three, and what to do next time:
   a 30-second witness that has not yet run in that process. Give the command that shows the answer
   from a cold start (45 samples), and say what each possible result means.
 
+## 1.8.1: the ANE figure holds through a gap
+
+Two shop photos of one M6 iMac, seconds apart (2026-11-09), had "ANE 0.0 W" in the legend and then
+no ANE at all. The legend changing length reads as a rail switching on and off. A sample with no
+ANE figure now shows the last one for up to 15 seconds (`Sampler.aneHold`, three samples at the
+slowest refresh); after that the rail goes, once. The source then reads `held:` and the reason, for
+example `held:clpc_pending`. Which route dropped out on the M6 is **not known**: CLPC's ANE counter
+missing a sample, or the Energy Model counter going quiet while the witness waits. A `--probe` on
+that machine will say. A rail that was never shown is never invented: the hold only repeats a
+figure that was measured.

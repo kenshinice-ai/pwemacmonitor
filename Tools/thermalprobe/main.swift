@@ -72,7 +72,7 @@ gpuThread.qualityOfService = .userInitiated
 gpuThread.start()
 
 guard let sampler = Sampler() else { fputs("no sampler\n", stderr); exit(1) }
-let cls = sampler.soc.chipClass
+let cls = sampler.hardware.powerClass(sampler.soc.chipClass)
 func thermal() -> String {
     switch ProcessInfo.processInfo.thermalState {
     case .nominal: return "nominal"; case .fair: return "fair"
@@ -91,7 +91,7 @@ while Date().timeIntervalSince(t0) < loadSeconds + coolSeconds {
     let el = Date().timeIntervalSince(t0)
     if el >= loadSeconds && running.on { running.on = false; print("   —— load off ——") }
     let s = sampler.sample(interval: 2, allSensors: false)
-    let ch = s.channels(chipClass: cls)
+    let ch = s.channels(powerClass: cls)
     let st = thermal()
     if st != "nominal" { everNonNominal = true }
     peakCPU = max(peakCPU, s.cpuTempMax); peakGPU = max(peakGPU, s.gpuTemp); peakW = max(peakW, s.sysPower)

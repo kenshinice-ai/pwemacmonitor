@@ -478,7 +478,7 @@ struct DashboardView: View {
                 // Model counters that now arrive every few minutes — are left out rather than
                 // printed as zero. The legend is one line either way, so the card's height holds.
                 let rails = measuredRails
-                let scale = max(Snapshot.powerEnvelope(soc?.chipClass ?? "Base"), s.railPower, 0.001)
+                let scale = max(Snapshot.powerEnvelope(monitor.powerClass), s.railPower, 0.001)
                 StackedBar(parts: rails.map { ($0.1, $0.2) }, total: scale, dark: dark)
                 HStack(spacing: Theme.s3) {
                     ForEach(rails, id: \.0) { rail in

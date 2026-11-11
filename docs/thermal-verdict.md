@@ -183,9 +183,19 @@ system's. The "+" is that switch showing: the pressure was on before the app sta
 measured figure; Base, Pro and Ultra are that correction applied proportionally and are unverified.
 On a chip that never reaches 95 °C the die channels simply stay calm, which is true of that machine.
 
+**The iMac is its own row (1.8.1).** The system figure on an iMac carries a 24-inch screen, which
+the Base row — scaled from a laptop — never allowed for. In a shop on 2026-11-09 two idle M6 iMacs
+read 38 W and 45 W with 0.1 W on the rails and were told "Power warm". An M3 iMac with its screen
+nearly dark reads 16 W idle and 30 W rendering in Blender (2026-11-11), so most of the gap is
+brightness. The iMac row is 38 W for the chip plus 40 W for the screen, 78 W: idle at any brightness
+stays calm, full brightness with the chip at full load turns warm. It is chosen by what the machine
+has — a built-in screen and no battery (`Hardware.powerClass`) — because iMac model identifiers
+changed from `iMac21,x` to `Mac15,x` and the M6 one is not known here. Unverified until one iMac is
+read at full brightness under full load; `pwemon --channels` prints the class it chose.
+
 `Tools/thresholds` holds the line that makes this acceptable: it sweeps 0–200 °C and 0–400 W with
 macOS reporting nominal and **fails the build if any magnitude reaches hot**, then checks that all
-eight verdicts still do. 114,105 assertions.
+eight verdicts still do. 114,171 assertions (1.8.1).
 
 ## Re-measuring on another chip
 

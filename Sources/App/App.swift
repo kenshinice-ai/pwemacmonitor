@@ -488,6 +488,10 @@ enum CLI {
         if let d = CLPC.driver() {
             print("CLPC driver   \(d.bundle) — \(CLPC.tableKey != nil ? "in the table" : "not in the table for this macOS")")
         } else { print("CLPC driver   none") }
+        if let s = Sampler() {
+            let hw = s.hardware, cls = hw.powerClass(s.soc.chipClass)
+            print("Power class   \(cls), \(Int(Snapshot.powerEnvelope(cls))) W — battery \(hw.hasBattery ? "yes" : "no"), built-in screen \(hw.hasBuiltInScreen ? "yes" : "no")")
+        }
         let all = IOReport.listing()
         print("Channels      \(all.count)")
         func names(_ group: String, _ subgroup: String? = nil) -> [String] {

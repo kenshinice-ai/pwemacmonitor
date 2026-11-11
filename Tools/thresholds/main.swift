@@ -31,14 +31,14 @@ for state in ThermalState.allCases {
         s.cpuTempMax = t; s.gpuTemp = t; s.ssdTemp = t
         s.sysPower = t; s.memory.total = 4000; s.memory.used = UInt64(i)
         s.memory.pressure = 100 - i / 40
-        let ch = s.channels(chipClass: chip)
+        let ch = s.channels(powerClass: chip)
         // The two die channels take the worse of their own reading and what macOS says.
         check("cpu/\(state)", t, max(s.cpuTempMaxHealth, state.health), ch[Channel.cpu.rawValue].band)
         check("gpu/\(state)", t, max(s.gpuTempHealth, state.health), ch[Channel.gpu.rawValue].band)
         check("ssd/\(state)", t, s.ssdTempHealth, ch[Channel.ssd.rawValue].band)
         check("mem/\(state)", Double(i), s.memoryHealth, ch[Channel.memory.rawValue].band)
         // power: battery absent, so the channel is pure power
-        check("pwr/\(state)", t, s.powerHealth(chipClass: chip), ch[Channel.power.rawValue].band)
+        check("pwr/\(state)", t, s.powerHealth(powerClass: chip), ch[Channel.power.rawValue].band)
     }
 }
 
@@ -48,8 +48,8 @@ for i in 0...100 {
         var s = Snapshot()
         s.battery.present = true; s.battery.percent = i; s.battery.externalPower = ext
         s.battery.temperature = Double(i) / 2 + 10          // 10 … 60 C
-        let want = max(s.powerHealth(chipClass: chip), s.batteryHealth)
-        check("pwr+batt(ext:\(ext))", Double(i), want, s.channels(chipClass: chip)[Channel.power.rawValue].band)
+        let want = max(s.powerHealth(powerClass: chip), s.batteryHealth)
+        check("pwr+batt(ext:\(ext))", Double(i), want, s.channels(powerClass: chip)[Channel.power.rawValue].band)
     }
 }
 
@@ -66,7 +66,7 @@ for i in 0...4000 {
     s.cpuTempMax = Double(i) / 20                       // 0 … 200 °C
     s.gpuTemp = s.cpuTempMax
     s.sysPower = Double(i) / 10                         // 0 … 400 W
-    let ch = s.channels(chipClass: chip)
+    let ch = s.channels(powerClass: chip)
     worstTemp = max(worstTemp, max(ch[Channel.cpu.rawValue].band, ch[Channel.gpu.rawValue].band))
     worstPower = max(worstPower, ch[Channel.power.rawValue].band)
 }
@@ -78,7 +78,7 @@ print("  0–400 W  with no battery:    worst band \(worstPower.word)")
 // ── verdicts still must reach hot, or the panel has gone blind ──
 print("── verdicts still reach hot ──")
 func band(_ build: (inout Snapshot) -> Void, _ c: Channel) -> Health {
-    var s = Snapshot(); build(&s); return s.channels(chipClass: chip)[c.rawValue].band
+    var s = Snapshot(); build(&s); return s.channels(powerClass: chip)[c.rawValue].band
 }
 let verdicts: [(String, Health, Health)] = [
     ("macOS thermalState serious", .warm, band({ $0.thermal = .serious }, .cpu)),
@@ -99,14 +99,14 @@ for (name, want, got) in verdicts {
 var prev = -1.0
 for i in 0...2000 {
     var s = Snapshot(); s.cpuTempMax = Double(i) / 10
-    let f = s.channels(chipClass: chip)[Channel.cpu.rawValue].fill
+    let f = s.channels(powerClass: chip)[Channel.cpu.rawValue].fill
     if f < prev - 1e-9 { bad += 1; print("  fill went backwards at \(Double(i) / 10) °C") }
     prev = f
 }
 var atWarm = Snapshot(); atWarm.cpuTempMax = Snapshot.tempWarm
-let fWarm = atWarm.channels(chipClass: chip)[Channel.cpu.rawValue].fill
+let fWarm = atWarm.channels(powerClass: chip)[Channel.cpu.rawValue].fill
 var atCritical = Snapshot(); atCritical.thermal = .critical
-let fCrit = atCritical.channels(chipClass: chip)[Channel.cpu.rawValue].fill
+let fCrit = atCritical.channels(powerClass: chip)[Channel.cpu.rawValue].fill
 print(String(format: "── fill at the warm anchor (%.0f °C): %.4f  (must be 0.7200)", Snapshot.tempWarm, fWarm))
 print(String(format: "── fill at thermalState critical:   %.4f  (must be 1.0000)", fCrit))
 require(abs(fWarm - 0.72) < 1e-9, "warm anchor moved")
@@ -141,8 +141,8 @@ func bands(_ temps: [Double], holding: Bool) -> [Health] {
     var held: Set<Magnitude> = [], out: [Health] = []
     for t in temps {
         var s = Snapshot(); s.cpuTempMax = t
-        if holding { held = s.holding(after: held, chipClass: chip); s.held = held }
-        let band = s.channels(chipClass: chip)[Channel.cpu.rawValue].band
+        if holding { held = s.holding(after: held, powerClass: chip); s.held = held }
+        let band = s.channels(powerClass: chip)[Channel.cpu.rawValue].band
         // The mark, the menu-bar figure and the THERMALS row all read the same latch.
         require(band == s.cpuTempMaxHealth, "held: channel says \(band.word), the reading's own grade says \(s.cpuTempMaxHealth.word) at \(t) °C")
         out.append(band)
@@ -159,18 +159,31 @@ require(firm[1] == .warm && firm[10] == .warm, "held: warm must last while the r
 require(firm[11] == .warm, "held: 92.4 °C is inside the 3 °C release margin and must still be warm")
 require(firm[12] == .calm, "held: 91.5 °C is clear of the margin and must let go")
 var heldFill = Snapshot(); heldFill.cpuTempMax = 93; heldFill.held = [.cpuTempMax]
-require(abs(heldFill.channels(chipClass: chip)[Channel.cpu.rawValue].fill - Health.warmMark) < 1e-9, "a held feather must stand on the warm mark")
+require(abs(heldFill.channels(powerClass: chip)[Channel.cpu.rawValue].fill - Health.warmMark) < 1e-9, "a held feather must stand on the warm mark")
 // Holding never lifts anything to hot, and never applies to a reading that was not warm before.
 var coldStart = Snapshot(); coldStart.cpuTempMax = 93
-require(coldStart.holding(after: [], chipClass: chip).isEmpty, "93 °C that was never warm must not be held")
+require(coldStart.holding(after: [], powerClass: chip).isEmpty, "93 °C that was never warm must not be held")
 var heldAll = Snapshot(); heldAll.held = Set(Magnitude.allCases)
-require(heldAll.overall(chipClass: chip) == .warm, "every magnitude held must read warm, not hot")
+require(heldAll.overall(powerClass: chip) == .warm, "every magnitude held must read warm, not hot")
 // Power: warm from 85 % of the envelope, released under 80 %.
 let env = Snapshot.powerEnvelope(chip)
 var pw = Snapshot(); pw.sysPower = env * 0.82
-require(pw.holding(after: [.power], chipClass: chip) == [.power], "power at 82 % of the envelope stays held")
+require(pw.holding(after: [.power], powerClass: chip) == [.power], "power at 82 % of the envelope stays held")
 pw.sysPower = env * 0.79
-require(pw.holding(after: [.power], chipClass: chip).isEmpty, "power at 79 % of the envelope lets go")
+require(pw.holding(after: [.power], powerClass: chip).isEmpty, "power at 79 % of the envelope lets go")
+// iMac (1.8.1): the system figure carries a 24-inch screen. The shop's idle M6 iMacs read 38 and
+// 45 W and were called warm against the base 38 W; an M3 iMac rendering in Blender read 30 W.
+let imac = Hardware(hasBattery: false, hasFans: true, hasBuiltInScreen: true)
+require(imac.powerClass("Base") == "iMac", "a built-in screen with no battery is graded as an iMac")
+require(Hardware.laptop.powerClass("Base") == "Base", "a laptop keeps its chip's envelope: its screen was in the calibration")
+require(Hardware(hasBattery: false, hasFans: true).powerClass("Max") == "Max", "a Mac Studio keeps its chip's envelope")
+for watts in [16.0, 30, 38, 45, 59] {
+    var idle = Snapshot(); idle.sysPower = watts
+    require(idle.powerHealth(powerClass: "iMac") == .calm, "an iMac at \(Int(watts)) W is calm")
+}
+var bright = Snapshot(); bright.sysPower = 70
+require(bright.powerHealth(powerClass: "iMac") == .warm, "an iMac at 70 W — full screen, full chip — is near its ceiling")
+require(Sampler.aneHold >= 3 * 5 && Sampler.aneHold <= 30, "the ANE hold covers three slow samples and no more than a glance")
 
 // ── memory follows macOS's level and nothing else (1.7.0) ──
 // The requirement in one line: with the system at normal, no amount of memory in use and no
@@ -183,20 +196,20 @@ for used in stride(from: 0, through: 1000, by: 5) {
         var s = Snapshot(); s.memory.total = 1000; s.memory.used = UInt64(used); s.memory.pressure = free
         for level in [MemoryPressure.normal, .warning, .critical] {
             s.memory.level = level
-            let ch = s.channels(chipClass: chip)[Channel.memory.rawValue]
+            let ch = s.channels(powerClass: chip)[Channel.memory.rawValue]
             require(ch.band == level.health, "memory at \(used / 10) % used, \(free) % free, level \(level.key): band \(ch.band.word)")
             require(s.memoryHealth == ch.band, "memoryHealth and the channel disagree at level \(level.key)")
             if level == .normal { require(ch.fill < Health.warmMark, "a normal level reached the warm mark at \(used / 10) % used") }
             memChecked += 1
         }
         s.memory.level = nil
-        require(s.channels(chipClass: chip)[Channel.memory.rawValue].band == .calm, "an unreadable level must be calm, not a guess")
+        require(s.channels(powerClass: chip)[Channel.memory.rawValue].band == .calm, "an unreadable level must be calm, not a guess")
     }
 }
 var mw = Snapshot(); mw.memory.level = .warning
 var mc = Snapshot(); mc.memory.level = .critical
-require(abs(mw.channels(chipClass: chip)[Channel.memory.rawValue].fill - Health.warmMark) < 1e-9, "warning stands on the warm mark")
-require(abs(mc.channels(chipClass: chip)[Channel.memory.rawValue].fill - 1) < 1e-9, "critical fills the feather")
+require(abs(mw.channels(powerClass: chip)[Channel.memory.rawValue].fill - Health.warmMark) < 1e-9, "warning stands on the warm mark")
+require(abs(mc.channels(powerClass: chip)[Channel.memory.rawValue].fill - 1) < 1e-9, "critical fills the feather")
 require(MemoryPressure(rawValue: 1) == .normal && MemoryPressure(rawValue: 2) == .warning && MemoryPressure(rawValue: 4) == .critical
         && MemoryPressure(rawValue: 3) == nil && MemoryPressure(rawValue: -1) == nil, "the sysctl answers 1, 2 or 4; anything else is unknown")
 print("  \(memChecked) combinations of used, free and level: the level alone sets the band")
@@ -222,12 +235,12 @@ require(PressureClock.format(45) == "45s" && PressureClock.format(725) == "12m" 
 print("  spell start, escalation, unreadable level, end, and a start we did not see")
 
 // ── the verdict line ──
-let warnCh = mw.channels(chipClass: chip)
+let warnCh = mw.channels(powerClass: chip)
 mw.pressure = clock                                       // normal again: no duration
 require(warnCh.headline(memory: "Memory pressure warning · 12m") == "Memory pressure warning · 12m", "memory's clause is the system's verdict, not a percentage")
 require(!warnCh.headline(memory: "Memory pressure warning · 12m").contains("%"), "no '72 % to its limit' for a level")
-require(Snapshot().channels(chipClass: chip).headline(primed: false) == "Reading…", "nothing is called calm before the first interval is measured")
-require(Snapshot().channels(chipClass: chip).headline() == "All five channels calm", "…and after it, calm is calm")
+require(Snapshot().channels(powerClass: chip).headline(primed: false) == "Reading…", "nothing is called calm before the first interval is measured")
+require(Snapshot().channels(powerClass: chip).headline() == "All five channels calm", "…and after it, calm is calm")
 var held12 = Snapshot(); held12.memory.level = .warning
 var c12 = PressureClock(); c12.update(.normal, now: 0); c12.update(.warning, now: 10); c12.update(.warning, now: 730); held12.pressure = c12
 require(held12.memoryVerdict == "Memory pressure warning · 12m", "memoryVerdict: got \(held12.memoryVerdict ?? "nil")")
@@ -236,15 +249,15 @@ require(Snapshot().memoryVerdict == nil, "no memory clause while the level is no
 let both = warnCh.headline(thermal: .serious, memory: "Memory pressure warning · 12m")
 require(both.contains("Performance reduced") && both.contains("Memory pressure warning"), "thermal serious must not hide the memory verdict, got: \(both)")
 var hotDie = Snapshot(); hotDie.thermal = .serious
-require(!hotDie.channels(chipClass: chip).headline(thermal: .serious).contains("CPU"), "…but the die channels it lifts are still said once, not twice")
+require(!hotDie.channels(powerClass: chip).headline(thermal: .serious).contains("CPU"), "…but the die channels it lifts are still said once, not twice")
 // 1.7.2: the power clause quotes the watts. "86 % to its limit" was the drawing's cap: an M5 Max
 // Mac Studio drew 185 W against an envelope of 140.
 var studio = Snapshot(); studio.sysPower = 185
-let studioLine = studio.channels(chipClass: "Max").headline()
+let studioLine = studio.channels(powerClass: "Max").headline()
 require(studioLine.contains("185 W") && !studioLine.contains("%"), "power warm says its watts, not a capped percentage, got: \(studioLine)")
-require(studio.channels(chipClass: "Max").spoken().contains("185 W"), "…and so does VoiceOver")
+require(studio.channels(powerClass: "Max").spoken().contains("185 W"), "…and so does VoiceOver")
 var drained = Snapshot(); drained.sysPower = 5; drained.battery.present = true; drained.battery.percent = 5
-require(drained.channels(chipClass: "Max").headline().contains("%"), "a battery about to run out keeps its percentage: that limit is real")
+require(drained.channels(powerClass: "Max").headline().contains("%"), "a battery about to run out keeps its percentage: that limit is real")
 // 1.7.5: the process order follows the pressure unless someone clicked the title for the other one.
 require(Sampler.processOrder(level: .normal, requested: nil) == .cpu && Sampler.processOrder(level: nil, requested: nil) == .cpu,
         "at rest, or with no level read, the busiest processes")
@@ -254,12 +267,12 @@ require(Sampler.processOrder(level: .normal, requested: .memory) == .memory && S
         "a click wins over the pressure while it holds")
 // 1.7.6: a hot die quotes its temperature. An M4 Max at 113 °C was told "86% to its limit", the cap.
 var hotCPU = Snapshot(); hotCPU.cpuTempMax = 113.2; hotCPU.cpuTemp = 104.3
-let hotLine = hotCPU.channels(chipClass: "Max").headline()
+let hotLine = hotCPU.channels(powerClass: "Max").headline()
 require(hotLine.contains("113°C") && !hotLine.contains("%"), "a hot CPU says its temperature, got: \(hotLine)")
 var hotGPU = Snapshot(); hotGPU.gpuTemp = 101
-require(hotGPU.channels(chipClass: "Max").headline().contains("101°C"), "…and so does a hot GPU")
+require(hotGPU.channels(powerClass: "Max").headline().contains("101°C"), "…and so does a hot GPU")
 var stateOnly = Snapshot(); stateOnly.cpuTempMax = 60; stateOnly.thermal = .serious
-require(stateOnly.channels(chipClass: "Max").first { $0.channel == .cpu }?.reading == nil,
+require(stateOnly.channels(powerClass: "Max").first { $0.channel == .cpu }?.reading == nil,
         "a feather lifted by macOS's thermal state, not the reading, does not quote the reading")
 var unseen = PressureClock(); unseen.update(.warning, now: 5); unseen.update(.normal, now: 65)
 require(unseen.lastSeconds == 60 && !unseen.lastStartKnown, "a spell whose start was not seen is remembered as a floor")

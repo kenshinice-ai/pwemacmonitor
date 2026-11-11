@@ -4,12 +4,24 @@
 
 ## 等 Lee
 
-- **[动手] 找一台 M6 跑 `pwemon --channels` 和 `--probe --samples 45`，把输出贴回来** — 1.8.0 按 macmon 的推断支持 M6，未在实机上看过；读数会说明三档核心是否齐全、Performance 档是否真和 Super 档共用频率表 · 自 2026-10-29
+- **[决定] 发 1.8.1 吗** — 推荐发：iMac 空闲不再误报「Power warm」，ANE 一栏不再时有时无；已改好、测过、已提交，未发布 · 不发则基础款 iMac 照旧误报 · 自 2026-11-11
 
 ## 排着要做的
 
+- **1.8.1 已改、未发布（2026-11-11）。**
+  - iMac 的功耗上限：有内建屏、没有电池的机器按 78 W 判（38 W 芯片 + 40 W 屏幕），见 `docs/thermal-verdict.md`「The iMac is its own row」。未核实：没有 iMac 在满亮度、满负载下读过。
+  - ANE 一栏：一次采样缺读数时，沿用上一次的，最多 15 秒，见 `docs/power-rails.md` 最后一节。M6 上是哪条来源断了仍不知道。
+  - 检查：`Tools/thresholds` 114,171 条通过；`--portcheck` 通过；`--channels` 新增一行「Power class」，在本机（M4 Max，合盖）打印 `Max, 140 W — battery yes, built-in screen no`。
+  - 未验证：内建屏检测（`CGDisplayIsBuiltin`）在 iMac 上返回 yes。本机合盖，内建屏不在线，测不到。发版后在 Lee 的 M3 iMac 上跑 `pwemon --channels`，期望 `Power class   iMac, 78 W`。
+- **M5 Pro 只显示 GPU 一条电源轨。** 同日店里 MacBook Pro M5 Pro（P10 + S5）CPU、ANE 都没有。可能是证人在空闲时不判，也可能 M5 Pro 的 CLPC 驱动不在表里。未核实：要 `pwemon --probe --samples 45` 那行 `[clpc_*]` 才分得清。
 - **pwe-house 的 Monitor 案例图还是 1.5 的面板。** 1.6.0 改了网络卡片，并把负载挪到核心条下面（2026-10-10）。那张图在 paradise-production 仓库，由那边的会话重拍；`docs/dashboard-*.png` 已是新图。
 - **产品页的循环和短片录的是 1.5.2 的面板。** 和 1.6.0 相比，核心条下面少一个「负载」读数；网络卡片在片子里本来就隐藏。差别很小。下次因为别的原因重录时一起更新，不为这一处单独重录。
+
+## 已核实（2026-11-09，Apple 店实机照片）
+
+- 1.8.0 在两种 M6 iMac 上识别正确：「Apple M6 · E6 + P4 + S2 · GPU 12」（两个风扇）和「E5 + P3 + S2 · GPU 10」（一个风扇）。三档频率都有读数（E 1.02–1.26、P 2.00–3.62、S 2.00–3.46 GHz），落在 macmon 实测范围内（E 972–2940、P/S 1440–4788 MHz）。没有电池卡片。CPU 功耗有读数（0.1 W），来源未看到。
+- M3 iMac 渲染时 CPU 到 101 °C（2026-11-11，Lee 截图）：风扇停在约 2600 rpm，和空闲时几乎一样；系统热状态一直 Nominal。判断是 Apple 的静音策略，不是故障：先让芯片热，到系统要降频才加转速。M4 Max 上测过 105–117 °C 也只到 `fair`（`docs/thermal-verdict.md`）。结论行写「CPU warm · 101°C」符合设计（95 °C 起琥珀）。
+- 未核实：Performance 档是否真和 Super 档共用频率表。照片里的读数和这个推断一致，但证明不了；要 `--channels` 的 `pmgr-child` 那几行。
 
 ## 1.7.1（2026-10-14 发布）
 

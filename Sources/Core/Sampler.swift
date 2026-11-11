@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 enum Health: Int, Comparable {
@@ -104,8 +105,18 @@ enum PowerSource: String {
 struct Hardware: Equatable {
     var hasBattery: Bool
     var hasFans: Bool
+    /// A screen that is part of the machine. With no battery beside it, that is an iMac.
+    var hasBuiltInScreen = false
 
-    static let laptop = Hardware(hasBattery: true, hasFans: true)
+    static let laptop = Hardware(hasBattery: true, hasFans: true, hasBuiltInScreen: true)
+
+    /// The key `Snapshot.powerEnvelope` grades the system figure against: the chip's class, or
+    /// "iMac" for a machine whose system figure also carries a 24-inch screen. Decided by
+    /// capability like the rest of this type — iMacs have been `iMac21,x`, `Mac15,x` and
+    /// `Mac16,x`, and the M6 one's identifier is not known here.
+    func powerClass(_ chipClass: String) -> String {
+        hasBuiltInScreen && !hasBattery ? "iMac" : chipClass
+    }
 
     func has(_ card: PanelCard) -> Bool {
         switch card {
@@ -352,8 +363,8 @@ struct Snapshot {
         v >= warm || (was && v >= release)
     }
     /// What `held` should be for these readings, given what it was a sample ago.
-    func holding(after previous: Set<Magnitude>, chipClass: String) -> Set<Magnitude> {
-        let envelope = Snapshot.powerEnvelope(chipClass)
+    func holding(after previous: Set<Magnitude>, powerClass: String) -> Set<Magnitude> {
+        let envelope = Snapshot.powerEnvelope(powerClass)
         return Set(Magnitude.allCases.filter { m in
             switch m {
             case .cpuTemp:    return Snapshot.holds(previous.contains(m), cpuTemp, warm: Snapshot.tempWarm, release: Snapshot.tempWarm - Snapshot.tempRelease)
@@ -402,25 +413,31 @@ struct Snapshot {
     /// low by a wide margin: an M4 Max measured 142.8 W against a coded 80. Max is the measured
     /// one; the others are that correction applied proportionally and are **unverified**. Being
     /// wrong here is now cosmetic, because power can no longer reach `.hot`.
-    static func powerEnvelope(_ chipClass: String) -> Double {
-        ["Ultra": 210, "Max": 140, "Pro": 79][chipClass] ?? 38
+    ///
+    /// iMac (1.8.1): 38 W plus 40 W for the screen. Two M6 iMacs in a shop, idle with 0.1 W on the
+    /// rails, read 38 W and 45 W and were told "Power warm"; an M3 iMac with its screen nearly dark
+    /// reads 16 W idle and 30 W rendering in Blender (2026-11-09/11). The screen at full brightness
+    /// is most of that gap. Also **unverified**: no iMac has been read at full brightness and full
+    /// load together.
+    static func powerEnvelope(_ powerClass: String) -> Double {
+        ["Ultra": 210, "Max": 140, "Pro": 79, "iMac": 78][powerClass] ?? 38
     }
     /// Never `.hot`. A chip drawing its full envelope is doing what it was built to do — the same
     /// reason `busy()` caps CPU and GPU load in the panel. Warm at 85 % says "near the ceiling",
     /// which is worth seeing; coral would say "something is wrong", which it is not.
-    func powerHealth(chipClass: String) -> Health {
-        let envelope = Snapshot.powerEnvelope(chipClass)
+    func powerHealth(powerClass: String) -> Health {
+        let envelope = Snapshot.powerEnvelope(powerClass)
         return magnitude(.power, sysPower, warm: envelope * Snapshot.powerWarm, hot: envelope)
     }
-    func overall(chipClass: String) -> Health {
-        channels(chipClass: chipClass).map(\.band).max() ?? .calm
+    func overall(powerClass: String) -> Health {
+        channels(powerClass: powerClass).map(\.band).max() ?? .calm
     }
 
     /// Strain per channel, innermost feather first. Every band shown anywhere in the interface
     /// comes from here — including `overall` — so the mark, the legend and the cards cannot
     /// drift apart. Thresholds are the same ones the individual `*Health` properties use, with
     /// `thermal` folded into the two die channels on top.
-    func channels(chipClass: String) -> [ChannelHealth] {
+    func channels(powerClass: String) -> [ChannelHealth] {
         Channel.allCases.map { c in
             let v: Double
             var reading: String?
@@ -442,7 +459,7 @@ struct Snapshot {
                 // Watts are a magnitude and cap at warm; the battery conditions below are real
                 // limits — Apple's operating range and a charge that is about to run out — and
                 // keep their path to hot.
-                let envelope = Snapshot.powerEnvelope(chipClass)
+                let envelope = Snapshot.powerEnvelope(powerClass)
                 let watts = strain(.power, sysPower, warm: envelope * Snapshot.powerWarm, hot: envelope)
                 var s = watts
                 if battery.present {
@@ -576,6 +593,12 @@ final class Sampler {
     /// the clock every histogram shares, and residency missing from it is time spent at 0 W.
     private var histogramTickRate = 0.0
     private var lastANE = 0.0, lastDRAM = 0.0
+    /// The ANE figure last shown, and when. See `aneHold`.
+    private var lastShownANE: (watts: Double, at: TimeInterval)?
+    /// How long a missing ANE figure is covered by the last one: three samples at the slowest
+    /// refresh. Long enough to stop the legend flickering, short enough that a rail that has
+    /// really gone is gone within a glance.
+    static let aneHold = 15.0
     /// Whether the CLPC table is the right one for this OS: nil until the witness has spoken,
     /// then true, or false for the rest of the run. See `clpcAgrees`.
     private var clpcTrusted: Bool?
@@ -659,7 +682,7 @@ final class Sampler {
         // `BatteryInstalled` covers the machine whose battery has been removed for service.
         let gauge = ioFirstProperties("AppleSmartBattery")
         hardware = Hardware(hasBattery: gauge.map { ($0["BatteryInstalled"] as? Bool) ?? true } ?? false,
-                            hasFans: !smcFanKeys.isEmpty)
+                            hasFans: !smcFanKeys.isEmpty, hasBuiltInScreen: Self.hasBuiltInScreen())
         classifyLiveKeys(now: 0)
 
         if let hid {
@@ -845,6 +868,17 @@ final class Sampler {
                     s.aneSource = clpcTrusted == false ? "clpc_refused" : "clpc_pending"
                 }
             }
+            // A sample with no ANE figure keeps the last one for a few seconds (1.8.1). Two shop
+            // photos of one M6, seconds apart, had "ANE 0.0 W" in the legend and then no ANE at
+            // all; the legend changing length every few samples reads as something switching on
+            // and off. Which of the two routes above dropped out is not known yet — the source
+            // says "held:" and why, so `--probe` on that machine will tell.
+            let now = ProcessInfo.processInfo.systemUptime
+            if s.aneReadable {
+                lastShownANE = (s.anePower, now)
+            } else if let shown = lastShownANE, now - shown.at <= Self.aneHold {
+                s.anePower = shown.watts; s.aneReadable = true; s.aneSource = "held:" + s.aneSource
+            }
             cores.sort { Self.coreSortKey($0.id) < Self.coreSortKey($1.id) }
             s.cores = cores
             let n = soc.tiers.count
@@ -931,7 +965,7 @@ final class Sampler {
 
         s.thermal = ThermalState(ProcessInfo.processInfo.thermalState)
         s.lowPowerMode = ProcessInfo.processInfo.isLowPowerModeEnabled
-        held = s.holding(after: held, chipClass: soc.chipClass)
+        held = s.holding(after: held, powerClass: hardware.powerClass(soc.chipClass))
         s.held = held
 
         s.memory = MemoryStats.read()
@@ -1030,6 +1064,15 @@ final class Sampler {
         guard let peak = temps.max() else { return 0 }
         let live = temps.filter { $0 >= peak - 15 }
         return zeroDiv(live.reduce(0, +), Double(live.count))
+    }
+
+    /// Whether any connected display is part of this Mac. A sleeping screen is still online.
+    static func hasBuiltInScreen() -> Bool {
+        var count: UInt32 = 0
+        guard CGGetOnlineDisplayList(0, nil, &count) == .success, count > 0 else { return false }
+        var ids = [CGDirectDisplayID](repeating: 0, count: Int(count))
+        guard CGGetOnlineDisplayList(count, &ids, &count) == .success else { return false }
+        return ids.prefix(Int(count)).contains { CGDisplayIsBuiltin($0) != 0 }
     }
 
     /// Which CPU figure to print.
