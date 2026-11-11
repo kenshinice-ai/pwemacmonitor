@@ -4,7 +4,7 @@
 
 ## 等 Lee
 
-- **[给料] 菜单栏里运行的是不是 1.8.1** — 2026-11-11 的截图里 37 W 被判琥珀，只有按旧的 38 W 上限才会这样；同一台机器上 `pwemon --channels` 已打印 `iMac, 78 W`。看「关于」窗口的版本号；若是 1.8.0，退出重开即可 · 若已是 1.8.1，说明 app 启动时没认出屏幕，要再修 · 自 2026-11-11
+- **[给料] M3 iMac 渲染时最热的 20 个传感器** — 1.8.1 面板显示 CPU 105–114 °C，但 CPU 只用 3 W、GPU 85 °C、风扇停在约 2600 rpm，这个温度可能不是 CPU 核心的。命令见 2026-11-11 的会话；不给就没法判断是真热还是读错了键 · 自 2026-11-11
 
 ## 排着要做的
 
@@ -50,7 +50,7 @@
 - 1.6.0（2026-10-10）：结论在 95 °C 附近来回跳的问题已加迟滞，回落到 92 °C 才放开；产品页「负载上来，外侧的羽毛先转琥珀」已改成按热量说。记录在 `docs/thermal-verdict.md`。
 - 1.6.0 修掉的端口泄漏、三处读数不准和实测占用，记录在 `docs/sampling.md`。发版脚本会先跑 `pwemon --portcheck`。
 - 1.6.0 于 2026-10-10 发布：GitHub release、cask、pwestudio.site 的安装包与更新端点都是 1.6.0，发布后的安装包回下核对过校验和与 Gatekeeper 结论。
-- 1.8.1 于 2026-11-11 发布：iMac（有内建屏、没有电池）的功耗上限按 78 W 判，空闲不再误报「Power warm」；ANE 一次采样缺读数时沿用上一次的，最多 15 秒。依据在 `docs/thermal-verdict.md`「The iMac is its own row」和 `docs/power-rails.md` 最后一节。GitHub release、cask、站点安装包与更新端点都是 1.8.1，回下核对过校验和（`ba51aa21…3bc0fb553`）与 Gatekeeper 结论；成品检查通过。内建屏检测已在 Lee 的 M3 iMac 上核实（2026-11-11）：`pwemon --channels` 打印 `Power class   iMac, 78 W — battery no, built-in screen yes`。
+- 1.8.1 于 2026-11-11 发布：iMac（有内建屏、没有电池）的功耗上限按 78 W 判，空闲不再误报「Power warm」；ANE 一次采样缺读数时沿用上一次的，最多 15 秒。依据在 `docs/thermal-verdict.md`「The iMac is its own row」和 `docs/power-rails.md` 最后一节。GitHub release、cask、站点安装包与更新端点都是 1.8.1，回下核对过校验和（`ba51aa21…3bc0fb553`）与 Gatekeeper 结论；成品检查通过。内建屏检测与面板都已在 Lee 的 M3 iMac 上核实（2026-11-11，32 W 不再判琥珀）：`pwemon --channels` 打印 `Power class   iMac, 78 W — battery no, built-in screen yes`。
 - 1.8.0 于 2026-10-29 发布：支持 M6 的三档核心，频率表也会去 `pmgr-child` 找（方案 38，照 macmon 的推断写，未在 M6 实机上验证）。第一个走完新发版流程的 Monitor 版本：app 本身带票据，成品检查摘要在 release 说明里。GitHub release、cask、站点安装包与更新端点都是 1.8.0，回下核对过校验和（`9d743a1d…d021c686`）与 Gatekeeper 结论；装上的副本 `stapler validate` 通过。
 - 发版流程 2026-10-18 起：`build.sh --dmg` 先公证、装订 app 本身，再做 DMG；`Tools/release.sh` 在打 tag 前要求 DMG 里的 app 带票据、`../ship-check.sh` 通过，并把检查摘要放进 release 说明。用 1.7.6 的代码实跑过一遍（未发布）。之前装上的副本没有票据，下次发版后才有。
 - 1.7.6 于 2026-10-16 发布：修 1.7.5 的进程卡片标题在面板打开时出现蓝色焦点框；CPU / GPU 过热时结论行报温度，不再报封顶的「86% to its limit」。GitHub release、cask、站点安装包与更新端点都是 1.7.6，回下核对过校验和（`85175879…3d6faa2`）与 Gatekeeper 结论。
